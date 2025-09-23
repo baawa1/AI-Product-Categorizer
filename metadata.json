@@ -1,0 +1,5 @@
+{
+  "name": "E-commerce Product Categorizer",
+  "description": "An intelligent tool that automatically categorizes e-commerce products (watches and glasses) by analyzing an uploaded image. Users can review and adjust the AI-suggested categories.",
+  "requestFramePermissions": []
+}
