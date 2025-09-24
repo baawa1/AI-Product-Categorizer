@@ -3,25 +3,30 @@ import { categorizeProduct } from './services/geminiService';
 import { ImageUploader } from './components/ImageUploader';
 import { CategorySelector } from './components/CategorySelector';
 import { SavedProductsModal } from './components/SavedProductsModal';
-import { CATEGORIES } from './constants';
-import { GithubIcon, SaveIcon } from './components/icons';
+import { CATEGORIES, BRANDS } from './constants';
+import { GithubIcon, SaveIcon, CloseIcon } from './components/icons';
 import { buildCategoryTree } from './utils/categoryTree';
-import type { SavedProduct } from './types';
+import type { SavedProduct, Variant } from './types';
 import { generateCsvContent } from './utils/csv';
 
 
 const App: React.FC = () => {
     const [sku, setSku] = useState<string>('');
     const [selectedProductType, setSelectedProductType] = useState<'watch' | 'glasses' | ''>('');
+    const [selectedBrandId, setSelectedBrandId] = useState<string>('');
+    const [model, setModel] = useState<string>('');
     const [price, setPrice] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
     const [productName, setProductName] = useState<string>('');
-    const [additionalFeatures, setAdditionalFeatures] = useState<string>('');
+    const [suggestedTags, setSuggestedTags] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isFetchingImage, setIsFetchingImage] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     
+    const [variants, setVariants] = useState<Variant[]>([]);
+
     const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
@@ -52,20 +57,27 @@ const App: React.FC = () => {
 
 
     useEffect(() => {
-        if (!imageFile || !selectedProductType || !sku) return;
+        if (!imageFile || !selectedProductType || !sku || !selectedBrandId) return;
 
         const processImage = async () => {
             setIsLoading(true);
             setError(null);
             setSelectedCategories(new Set());
             setProductName('');
-            setAdditionalFeatures('');
+            setSuggestedTags('');
+            setVariants([]);
 
             try {
-                const { categoryIds, productName, additionalFeatures } = await categorizeProduct(imageFile, selectedProductType, price || undefined);
+                const { categoryIds, productName, suggestedTags } = await categorizeProduct(
+                    imageFile, 
+                    selectedProductType, 
+                    selectedBrandId ? parseInt(selectedBrandId, 10) : null,
+                    model || undefined,
+                    price || undefined
+                );
                 setSelectedCategories(new Set(categoryIds));
                 setProductName(productName);
-                setAdditionalFeatures(additionalFeatures);
+                setSuggestedTags(suggestedTags);
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'An unknown error occurred.');
             } finally {
@@ -74,9 +86,10 @@ const App: React.FC = () => {
         };
 
         processImage();
-    }, [imageFile, selectedProductType, sku, price]);
+    }, [imageFile, selectedProductType, sku, price, selectedBrandId, model]);
 
     const handleImageSelect = (file: File | null) => {
+        setError(null);
         if (file) {
             setImageFile(file);
             const reader = new FileReader();
@@ -86,6 +99,27 @@ const App: React.FC = () => {
             reader.readAsDataURL(file);
         }
     };
+    
+    const handleImageUrlFetch = useCallback(async (url: string) => {
+        if (!url) return;
+        setIsFetchingImage(true);
+        setError(null);
+        try {
+            const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image. Status: ${response.status}`);
+            }
+            const blob = await response.blob();
+            const fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || 'image.jpg';
+            const file = new File([blob], fileName, { type: blob.type });
+            handleImageSelect(file);
+        } catch (e) {
+             console.error("Failed to fetch image from URL:", e);
+             setError("Could not fetch image from URL. It may be due to server restrictions (CORS policy). Please try another URL or upload a file.");
+        } finally {
+            setIsFetchingImage(false);
+        }
+    }, []);
 
     const handleCategoryToggle = useCallback((categoryId: number) => {
         setSelectedCategories(prev => {
@@ -98,6 +132,23 @@ const App: React.FC = () => {
             return newSet;
         });
     }, []);
+    
+    const handleAddVariant = () => {
+        setVariants(prev => [...prev, { id: Date.now(), sku: '', color: '', size: '', other: '' }]);
+    };
+
+    const handleUpdateVariant = (index: number, field: keyof Variant, value: string) => {
+        setVariants(prev => {
+            const newVariants = [...prev];
+            newVariants[index] = { ...newVariants[index], [field]: value };
+            return newVariants;
+        });
+    };
+
+    const handleRemoveVariant = (id: number) => {
+        setVariants(prev => prev.filter(variant => variant.id !== id));
+    };
+
 
     const handleReset = useCallback(() => {
         setSku('');
@@ -105,40 +156,60 @@ const App: React.FC = () => {
         setImageUrl(null);
         setSelectedCategories(new Set());
         setIsLoading(false);
+        setIsFetchingImage(false);
         setError(null);
         setSelectedProductType('');
+        setSelectedBrandId('');
+        setModel('');
         setPrice('');
         setProductName('');
-        setAdditionalFeatures('');
+        setSuggestedTags('');
+        setVariants([]);
     }, []);
 
     const handleSaveProduct = useCallback(() => {
-        if (!sku || !selectedProductType || !imageUrl || !productName) {
+        if (!sku || !selectedProductType || !selectedBrandId || !imageUrl || !productName) {
             setError("Cannot save, required fields are missing.");
             return;
         }
 
-        const newProduct: SavedProduct = {
-            sku,
+        const baseProduct: Omit<SavedProduct, 'sku' | 'variantSku' | 'variantColor' | 'variantSize' | 'variantOther'> = {
             productType: selectedProductType,
             price: price || 'N/A',
             imageUrl,
             productName,
-            additionalFeatures,
-            categoryIds: Array.from(selectedCategories)
+            suggestedTags,
+            categoryIds: Array.from(selectedCategories),
+            brandId: selectedBrandId ? parseInt(selectedBrandId, 10) : null,
+            model: model
         };
 
-        const updatedProducts = [...savedProducts, newProduct];
+        let productsToSave: SavedProduct[];
+
+        if (variants.length > 0) {
+            productsToSave = variants.map(variant => ({
+                ...baseProduct,
+                sku: sku, // Main product SKU
+                variantSku: variant.sku || undefined,
+                variantColor: variant.color || undefined,
+                variantSize: variant.size || undefined,
+                variantOther: variant.other || undefined,
+            }));
+        } else {
+            productsToSave = [{ ...baseProduct, sku }];
+        }
+        
+        const updatedProducts = [...savedProducts, ...productsToSave];
         setSavedProducts(updatedProducts);
         localStorage.setItem('savedProducts', JSON.stringify(updatedProducts));
 
         // Reset form for next entry
         handleReset();
 
-    }, [sku, selectedProductType, price, imageUrl, productName, additionalFeatures, selectedCategories, savedProducts, handleReset]);
+    }, [sku, selectedProductType, price, imageUrl, productName, suggestedTags, selectedCategories, savedProducts, handleReset, selectedBrandId, model, variants]);
     
     const handleDownloadCsv = useCallback(() => {
-        const csvContent = generateCsvContent(savedProducts, CATEGORIES);
+        const csvContent = generateCsvContent(savedProducts, CATEGORIES, BRANDS);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         if (link.href) {
@@ -151,7 +222,7 @@ const App: React.FC = () => {
         document.body.removeChild(link);
     }, [savedProducts]);
 
-    const isDetailsComplete = !!sku && !!selectedProductType;
+    const isDetailsComplete = !!sku && !!selectedProductType && !!selectedBrandId;
 
     const inputStyle: React.CSSProperties = {
         width: '100%',
@@ -162,6 +233,13 @@ const App: React.FC = () => {
         padding: '0.625rem 0.75rem',
         boxSizing: 'border-box'
     };
+    
+    const variantInputStyle: React.CSSProperties = {
+        ...inputStyle,
+        padding: '0.5rem 0.75rem',
+        fontSize: '0.875rem'
+    };
+
 
     const labelStyle: React.CSSProperties = {
         display: 'block',
@@ -238,6 +316,31 @@ const App: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
+                                    <label htmlFor="brand" style={labelStyle}>Brand <span style={{color: '#F87171'}}>*</span></label>
+                                    <select
+                                        id="brand"
+                                        value={selectedBrandId}
+                                        onChange={e => setSelectedBrandId(e.target.value)}
+                                        style={{ ...inputStyle, appearance: 'none' }}
+                                    >
+                                        <option value="">-- Select a brand --</option>
+                                        {BRANDS.map(brand => (
+                                            <option key={brand.id} value={brand.id}>{brand.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="model" style={labelStyle}>Model</label>
+                                    <input
+                                        id="model"
+                                        type="text"
+                                        placeholder="e.g. T-Sport (Optional)"
+                                        value={model}
+                                        onChange={e => setModel(e.target.value)}
+                                        style={inputStyle}
+                                    />
+                                </div>
+                                <div>
                                     <label htmlFor="price" style={labelStyle}>Price (Naira)</label>
                                     <input
                                         id="price"
@@ -253,8 +356,10 @@ const App: React.FC = () => {
                         <ImageUploader
                             imageUrl={imageUrl}
                             onImageSelect={handleImageSelect}
+                            onImageUrlFetch={handleImageUrlFetch}
                             onReset={handleReset}
                             isLoading={isLoading}
+                            isFetchingImage={isFetchingImage}
                             error={error}
                             hasImage={!!imageFile}
                             disabled={!isDetailsComplete}
@@ -278,12 +383,12 @@ const App: React.FC = () => {
                                     />
                                 </div>
                                 <div style={{ marginBottom: '1.5rem' }}>
-                                    <label htmlFor="additionalFeatures" style={labelStyle}>Additional Features (Tags)</label>
+                                    <label htmlFor="suggestedTags" style={labelStyle}>Suggested Tags</label>
                                     <textarea
-                                        id="additionalFeatures"
+                                        id="suggestedTags"
                                         placeholder={isLoading ? "Generating..." : "e.g. water-resistant, luminous hands"}
-                                        value={additionalFeatures}
-                                        onChange={e => setAdditionalFeatures(e.target.value)}
+                                        value={suggestedTags}
+                                        onChange={e => setSuggestedTags(e.target.value)}
                                         disabled={isLoading}
                                         rows={3}
                                         style={{...inputStyle, resize: 'vertical'}}
@@ -299,6 +404,35 @@ const App: React.FC = () => {
                                         isLoading={isLoading}
                                     />
                                 )}
+                                
+                                {/* Variants Section */}
+                                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #374151' }}>
+                                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>4. Product Variants</h2>
+                                    {variants.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+                                            {variants.map((variant, index) => (
+                                                <div key={variant.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: '0.75rem', alignItems: 'center', backgroundColor: '#374151', padding: '0.75rem', borderRadius: '0.5rem' }}>
+                                                    <input type="text" placeholder="Variant SKU" value={variant.sku} onChange={e => handleUpdateVariant(index, 'sku', e.target.value)} style={variantInputStyle} />
+                                                    <input type="text" placeholder="Color" value={variant.color} onChange={e => handleUpdateVariant(index, 'color', e.target.value)} style={variantInputStyle} />
+                                                    <input type="text" placeholder="Size" value={variant.size} onChange={e => handleUpdateVariant(index, 'size', e.target.value)} style={variantInputStyle} />
+                                                    <input type="text" placeholder="Other (e.g. Material)" value={variant.other} onChange={e => handleUpdateVariant(index, 'other', e.target.value)} style={variantInputStyle} />
+                                                    <button onClick={() => handleRemoveVariant(variant.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: '0.5rem' }} aria-label="Remove variant">
+                                                       <CloseIcon />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={handleAddVariant}
+                                        disabled={isLoading}
+                                        style={{...buttonStyle, width: '100%', justifyContent: 'center' }}
+                                    >
+                                        + Add Variant
+                                    </button>
+                                </div>
+
+
                                 <div style={{ marginTop: 'auto', paddingTop: '1.5rem' }}>
                                     <button
                                         onClick={handleSaveProduct}
@@ -327,7 +461,7 @@ const App: React.FC = () => {
                     </a>
                 </footer>
             </div>
-            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={handleDownloadCsv} />}
+            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={handleDownloadCsv} brands={BRANDS} />}
         </div>
     );
 };

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { CATEGORIES } from '../constants';
+import { CATEGORIES, BRANDS } from '../constants';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 const model = 'gemini-2.5-flash';
@@ -7,7 +7,7 @@ const model = 'gemini-2.5-flash';
 interface CategorizationResult {
   categoryIds: number[];
   productName: string;
-  additionalFeatures: string;
+  suggestedTags: string;
 }
 
 const fileToGenerativePart = async (file: File) => {
@@ -24,19 +24,32 @@ const fileToGenerativePart = async (file: File) => {
 export const categorizeProduct = async (
     imageFile: File,
     productType: 'watch' | 'glasses',
+    brandId: number | null,
+    modelStr: string | undefined,
     price?: string
 ): Promise<CategorizationResult> => {
   try {
     const imagePart = await fileToGenerativePart(imageFile);
     
-    const priceInfo = price ? `and its price is ${price} Naira` : '';
+    const brand = brandId ? BRANDS.find(b => b.id === brandId) : null;
+    const brandName = brand ? brand.name : 'Unknown Brand';
 
-    const prompt = `You are an expert e-commerce product categorizer for a store in Nigeria.
-The product shown in the image is a "${productType}" ${priceInfo}. Your task is to analyze the product and return a structured JSON response.
+    let contextInfo = `The product shown in the image is a "${productType}" from the brand "${brandName}"`;
+    if (modelStr) {
+        contextInfo += ` and the model is "${modelStr}"`;
+    }
+    if (price) {
+        contextInfo += `, and its price is ${price} Naira`;
+    }
+    contextInfo += ".";
+
+
+    const prompt = `${contextInfo}
+You are an expert e-commerce product categorizer for a store in Nigeria. Your task is to analyze the product and return a structured JSON response.
 
 Instructions:
-1.  Generate a descriptive product name. Include brand (if visible), model, key features, and gender. Example: "Cartier TY786C Men's Leather Chronograph Watch".
-2.  Identify any other distinct features or characteristics visible in the image that are not covered by the categories list. List these as a comma-separated string. Example: "luminous hands, date display, sapphire crystal".
+1.  Generate a descriptive product name. Use the provided Brand ("${brandName}") and Model ("${modelStr || 'N/A'}") as the foundation. Combine them with key features and gender. Example: "Cartier TY786C Men's Leather Chronograph Watch".
+2.  Identify any other distinct features or characteristics visible in the image that are not covered by the categories list. List these as a comma-separated string of tags. Example: "luminous hands, date display, sapphire crystal".
 3.  Analyze the product's specific features (style, material, gender, type, etc.) from the image to select relevant categories.
 4.  If a price is provided, use it to select the correct price range category (e.g., 'Watches Under 20000 Naira').
 5.  Select ALL applicable sub-categories from the list that accurately describe the product.
@@ -47,7 +60,7 @@ ${CATEGORIES.map(c => `- ID: ${c.id}, Name: ${c.name}, Parent: ${c.parent}`).joi
 
 Analyze the image and return a JSON object containing:
 - "productName": The generated product name.
-- "additionalFeatures": A comma-separated string of extra features.
+- "suggestedTags": A comma-separated string of extra features or tags.
 - "categoryIds": An array of the IDs for all categories that best describe the product.
 
 Only return IDs from the list provided.
@@ -65,9 +78,9 @@ Only return IDs from the list provided.
               type: Type.STRING,
               description: 'A descriptive name for the product.'
             },
-            additionalFeatures: {
+            suggestedTags: {
               type: Type.STRING,
-              description: 'A comma-separated list of additional features or tags.'
+              description: 'A comma-separated list of suggested tags.'
             },
             categoryIds: {
               type: Type.ARRAY,
@@ -77,7 +90,7 @@ Only return IDs from the list provided.
               }
             }
           },
-          required: ['productName', 'additionalFeatures', 'categoryIds']
+          required: ['productName', 'suggestedTags', 'categoryIds']
         },
         temperature: 0.1,
       }
@@ -86,14 +99,14 @@ Only return IDs from the list provided.
     const jsonString = response.text;
     const result = JSON.parse(jsonString);
 
-    if (result && typeof result.productName === 'string' && typeof result.additionalFeatures === 'string' && Array.isArray(result.categoryIds)) {
+    if (result && typeof result.productName === 'string' && typeof result.suggestedTags === 'string' && Array.isArray(result.categoryIds)) {
       const validIds = result.categoryIds.filter((id: unknown) => 
         typeof id === 'number' && CATEGORIES.some(c => c.id === id)
       );
       return { 
           categoryIds: validIds,
           productName: result.productName,
-          additionalFeatures: result.additionalFeatures,
+          suggestedTags: result.suggestedTags,
       };
     }
     

@@ -9,7 +9,7 @@ export const UploadIcon: React.FC = () => (
 );
 
 export const LoadingSpinner: React.FC = () => (
-    <svg width="48" height="48" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="#93C5FD">
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke="#93C5FD">
         <style>{`.spinner_V8m1{transform-origin:center;animation:spinner_zKoa 2s linear infinite}.spinner_zKoa{stroke-dasharray:12 12;stroke-dashoffset:0;transform:rotate(0)}.spinner_YpZS{animation-delay:-.5s}`}</style>
         <g className="spinner_V8m1">
             <circle cx="12" cy="12" r="9.5" fill="none" strokeWidth="2"></circle>
@@ -58,5 +58,12 @@ export const CloseIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+);
+
+export const LinkIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.72"></path>
     </svg>
 );

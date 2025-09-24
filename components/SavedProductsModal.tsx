@@ -1,15 +1,18 @@
-import React from 'react';
-import type { SavedProduct } from '../types';
+import React, { useMemo } from 'react';
+import type { SavedProduct, Brand } from '../types';
 import { CloseIcon, DownloadIcon } from './icons';
 
 interface SavedProductsModalProps {
     products: SavedProduct[];
     onClose: () => void;
     onDownload: () => void;
+    brands: Brand[];
 }
 
-export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products, onClose, onDownload }) => {
+export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products, onClose, onDownload, brands }) => {
     
+    const brandMap = useMemo(() => new Map<number, string>(brands.map(brand => [brand.id, brand.name])), [brands]);
+
     const modalStyle: React.CSSProperties = {
         position: 'fixed',
         top: 0,
@@ -29,7 +32,7 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
         borderRadius: '0.75rem',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         width: '100%',
-        maxWidth: '900px',
+        maxWidth: '1200px',
         maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
@@ -60,11 +63,16 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
         borderBottom: '1px solid #4B5563',
         backgroundColor: '#374151',
         fontWeight: 600,
+        whiteSpace: 'nowrap',
     };
     
     const tdStyle: React.CSSProperties = {
         padding: '0.75rem 1rem',
         borderBottom: '1px solid #374151',
+        maxWidth: '200px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
     };
 
     const buttonStyle: React.CSSProperties = {
@@ -110,17 +118,25 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                         <thead>
                             <tr>
                                 <th style={thStyle}>SKU</th>
+                                <th style={thStyle}>Variant SKU</th>
                                 <th style={thStyle}>Name</th>
-                                <th style={thStyle}>Type</th>
+                                <th style={thStyle}>Brand</th>
+                                <th style={thStyle}>Model</th>
+                                <th style={thStyle}>Color</th>
+                                <th style={thStyle}>Size</th>
                                 <th style={thStyle}>Price</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {products.map(product => (
-                                <tr key={product.sku} style={{ backgroundColor: '#1F2937' }}>
+                            {products.map((product, index) => (
+                                <tr key={`${product.sku}-${product.variantSku || index}`} style={{ backgroundColor: '#1F2937' }}>
                                     <td style={{ ...tdStyle, fontWeight: 500 }}>{product.sku}</td>
-                                    <td style={tdStyle}>{product.productName}</td>
-                                    <td style={tdStyle}>{product.productType}</td>
+                                    <td style={tdStyle}>{product.variantSku || 'N/A'}</td>
+                                    <td style={tdStyle} title={product.productName}>{product.productName}</td>
+                                    <td style={tdStyle}>{product.brandId ? brandMap.get(product.brandId) : 'N/A'}</td>
+                                    <td style={tdStyle}>{product.model || 'N/A'}</td>
+                                    <td style={tdStyle}>{product.variantColor || 'N/A'}</td>
+                                    <td style={tdStyle}>{product.variantSize || 'N/A'}</td>
                                     <td style={tdStyle}>{product.price}</td>
                                 </tr>
                             ))}
