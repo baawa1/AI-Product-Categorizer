@@ -25,7 +25,7 @@ export interface SavedProduct {
     sku: string; // Main product SKU
     productType: 'watch' | 'glasses';
     price: string;
-    imageUrl: string;
+    imageSource: string;
     productName: string;
     suggestedTags: string;
     categoryIds: number[];

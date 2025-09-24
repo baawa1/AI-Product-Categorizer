@@ -18,6 +18,7 @@ const App: React.FC = () => {
     const [price, setPrice] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [imageSource, setImageSource] = useState<string | null>(null); // To store filename or URL
     const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
     const [productName, setProductName] = useState<string>('');
     const [suggestedTags, setSuggestedTags] = useState<string>('');
@@ -92,6 +93,7 @@ const App: React.FC = () => {
         setError(null);
         if (file) {
             setImageFile(file);
+            setImageSource(file.name); // Save filename
             const reader = new FileReader();
             reader.onload = (e) => {
                 setImageUrl(e.target?.result as string);
@@ -105,6 +107,7 @@ const App: React.FC = () => {
         setIsFetchingImage(true);
         setError(null);
         try {
+            setImageSource(url); // Save original URL
             const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
             if (!response.ok) {
                 throw new Error(`Failed to fetch image. Status: ${response.status}`);
@@ -116,6 +119,7 @@ const App: React.FC = () => {
         } catch (e) {
              console.error("Failed to fetch image from URL:", e);
              setError("Could not fetch image from URL. It may be due to server restrictions (CORS policy). Please try another URL or upload a file.");
+             setImageSource(null); // Clear source on error
         } finally {
             setIsFetchingImage(false);
         }
@@ -154,6 +158,7 @@ const App: React.FC = () => {
         setSku('');
         setImageFile(null);
         setImageUrl(null);
+        setImageSource(null);
         setSelectedCategories(new Set());
         setIsLoading(false);
         setIsFetchingImage(false);
@@ -168,7 +173,7 @@ const App: React.FC = () => {
     }, []);
 
     const handleSaveProduct = useCallback(() => {
-        if (!sku || !selectedProductType || !selectedBrandId || !imageUrl || !productName) {
+        if (!sku || !selectedProductType || !selectedBrandId || !imageSource || !productName) {
             setError("Cannot save, required fields are missing.");
             return;
         }
@@ -176,7 +181,7 @@ const App: React.FC = () => {
         const baseProduct: Omit<SavedProduct, 'sku' | 'variantSku' | 'variantColor' | 'variantSize' | 'variantOther'> = {
             productType: selectedProductType,
             price: price || 'N/A',
-            imageUrl,
+            imageSource,
             productName,
             suggestedTags,
             categoryIds: Array.from(selectedCategories),
@@ -206,7 +211,7 @@ const App: React.FC = () => {
         // Reset form for next entry
         handleReset();
 
-    }, [sku, selectedProductType, price, imageUrl, productName, suggestedTags, selectedCategories, savedProducts, handleReset, selectedBrandId, model, variants]);
+    }, [sku, selectedProductType, price, imageSource, productName, suggestedTags, selectedCategories, savedProducts, handleReset, selectedBrandId, model, variants]);
     
     const handleDownloadCsv = useCallback(() => {
         const csvContent = generateCsvContent(savedProducts, CATEGORIES, BRANDS);
