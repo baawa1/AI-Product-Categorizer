@@ -1,10 +1,13 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { categorizeProduct } from './services/geminiService';
 import { ImageUploader } from './components/ImageUploader';
 import { CategorySelector } from './components/CategorySelector';
+import { AttributeSelector } from './components/AttributeSelector';
 import { SavedProductsModal } from './components/SavedProductsModal';
-import { CATEGORIES, BRANDS } from './constants';
-import { GithubIcon, SaveIcon, CloseIcon } from './components/icons';
+import { SearchableSelect } from './components/SearchableSelect';
+import { CATEGORIES, BRANDS, ATTRIBUTES } from './constants';
+import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon } from './components/icons';
 import { buildCategoryTree } from './utils/categoryTree';
 import type { SavedProduct, Variant } from './types';
 import { generateCsvContent } from './utils/csv';
@@ -16,15 +19,20 @@ const App: React.FC = () => {
     const [selectedBrandId, setSelectedBrandId] = useState<string>('');
     const [model, setModel] = useState<string>('');
     const [price, setPrice] = useState<string>('');
+    const [userProvidedDetails, setUserProvidedDetails] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [imageSource, setImageSource] = useState<string | null>(null); // To store filename or URL
     const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
+    const [selectedAttributes, setSelectedAttributes] = useState<Set<number>>(new Set());
     const [productName, setProductName] = useState<string>('');
     const [suggestedTags, setSuggestedTags] = useState<string>('');
+    const [shortDescription, setShortDescription] = useState<string>('');
+    const [longDescription, setLongDescription] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isFetchingImage, setIsFetchingImage] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+    const [analysisCompleted, setAnalysisCompleted] = useState<boolean>(false);
     
     const [variants, setVariants] = useState<Variant[]>([]);
 
@@ -56,41 +64,50 @@ const App: React.FC = () => {
     const watchCategoryTree = useMemo(() => categoryTree.find(node => node.id === 4287)?.children ?? [], [categoryTree]);
     const glassCategoryTree = useMemo(() => categoryTree.find(node => node.id === 4296)?.children ?? [], [categoryTree]);
 
+    const watchAttributes = useMemo(() => ATTRIBUTES.filter(attr => attr.type === 'watch'), []);
+    const glassAttributes = useMemo(() => ATTRIBUTES.filter(attr => attr.type === 'glasses'), []);
 
-    useEffect(() => {
+    const handleStartAnalysis = async () => {
         if (!imageFile || !selectedProductType || !sku || !selectedBrandId) return;
 
-        const processImage = async () => {
-            setIsLoading(true);
-            setError(null);
-            setSelectedCategories(new Set());
-            setProductName('');
-            setSuggestedTags('');
-            setVariants([]);
+        setIsLoading(true);
+        setError(null);
+        setAnalysisCompleted(false);
+        setSelectedCategories(new Set());
+        setSelectedAttributes(new Set());
+        setProductName('');
+        setSuggestedTags('');
+        setShortDescription('');
+        setLongDescription('');
+        setVariants([]);
 
-            try {
-                const { categoryIds, productName, suggestedTags } = await categorizeProduct(
-                    imageFile, 
-                    selectedProductType, 
-                    selectedBrandId ? parseInt(selectedBrandId, 10) : null,
-                    model || undefined,
-                    price || undefined
-                );
-                setSelectedCategories(new Set(categoryIds));
-                setProductName(productName);
-                setSuggestedTags(suggestedTags);
-            } catch (e) {
-                setError(e instanceof Error ? e.message : 'An unknown error occurred.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
+        try {
+            const { categoryIds, attributeIds, productName, suggestedTags, shortDescription, longDescription } = await categorizeProduct(
+                imageFile,
+                selectedProductType,
+                selectedBrandId ? parseInt(selectedBrandId, 10) : null,
+                model || undefined,
+                price || undefined,
+                userProvidedDetails || undefined
+            );
+            setSelectedCategories(new Set(categoryIds));
+            setSelectedAttributes(new Set(attributeIds));
+            setProductName(productName);
+            setSuggestedTags(suggestedTags);
+            setShortDescription(shortDescription);
+            setLongDescription(longDescription);
+            setAnalysisCompleted(true);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'An unknown error occurred.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-        processImage();
-    }, [imageFile, selectedProductType, sku, price, selectedBrandId, model]);
 
     const handleImageSelect = (file: File | null) => {
         setError(null);
+        setAnalysisCompleted(false);
         if (file) {
             setImageFile(file);
             setImageSource(file.name); // Save filename
@@ -106,11 +123,20 @@ const App: React.FC = () => {
         if (!url) return;
         setIsFetchingImage(true);
         setError(null);
+        setAnalysisCompleted(false);
         try {
             setImageSource(url); // Save original URL
-            const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+            // Fetch the image directly, removing the proxy which can cause issues with services like Supabase.
+            // Supabase public URLs typically have CORS enabled, allowing direct fetches.
+            const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`Failed to fetch image. Status: ${response.status}`);
+                let errorMessage = `Failed to fetch image. Status: ${response.status}`;
+                if (response.status === 403) {
+                    errorMessage = "Error 403: Forbidden. The server might be blocking requests from this origin.";
+                } else if (response.status === 404) {
+                    errorMessage = "Error 404: Not Found. Please check if the image URL is correct.";
+                }
+                throw new Error(errorMessage);
             }
             const blob = await response.blob();
             const fileName = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || 'image.jpg';
@@ -118,7 +144,12 @@ const App: React.FC = () => {
             handleImageSelect(file);
         } catch (e) {
              console.error("Failed to fetch image from URL:", e);
-             setError("Could not fetch image from URL. It may be due to server restrictions (CORS policy). Please try another URL or upload a file.");
+             // A TypeError with "Failed to fetch" is a strong indicator of a CORS issue.
+             if (e instanceof TypeError && e.message === 'Failed to fetch') {
+                 setError("Could not fetch image. This is often due to the server's CORS policy. Try downloading the image and uploading it directly.");
+             } else {
+                 setError(e instanceof Error ? e.message : "Could not fetch image from URL. It may be due to server restrictions (CORS policy).");
+             }
              setImageSource(null); // Clear source on error
         } finally {
             setIsFetchingImage(false);
@@ -137,11 +168,23 @@ const App: React.FC = () => {
         });
     }, []);
     
+    const handleAttributeToggle = useCallback((attributeId: number) => {
+        setSelectedAttributes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(attributeId)) {
+                newSet.delete(attributeId);
+            } else {
+                newSet.add(attributeId);
+            }
+            return newSet;
+        });
+    }, []);
+    
     const handleAddVariant = () => {
         setVariants(prev => [...prev, { id: Date.now(), sku: '', color: '', size: '', other: '' }]);
     };
 
-    const handleUpdateVariant = (index: number, field: keyof Variant, value: string) => {
+    const handleUpdateVariant = (index: number, field: keyof Omit<Variant, 'id'>, value: string) => {
         setVariants(prev => {
             const newVariants = [...prev];
             newVariants[index] = { ...newVariants[index], [field]: value };
@@ -160,6 +203,7 @@ const App: React.FC = () => {
         setImageUrl(null);
         setImageSource(null);
         setSelectedCategories(new Set());
+        setSelectedAttributes(new Set());
         setIsLoading(false);
         setIsFetchingImage(false);
         setError(null);
@@ -167,9 +211,13 @@ const App: React.FC = () => {
         setSelectedBrandId('');
         setModel('');
         setPrice('');
+        setUserProvidedDetails('');
         setProductName('');
         setSuggestedTags('');
+        setShortDescription('');
+        setLongDescription('');
         setVariants([]);
+        setAnalysisCompleted(false);
     }, []);
 
     const handleSaveProduct = useCallback(() => {
@@ -184,7 +232,10 @@ const App: React.FC = () => {
             imageSource,
             productName,
             suggestedTags,
+            shortDescription,
+            longDescription,
             categoryIds: Array.from(selectedCategories),
+            attributeIds: Array.from(selectedAttributes),
             brandId: selectedBrandId ? parseInt(selectedBrandId, 10) : null,
             model: model
         };
@@ -211,10 +262,10 @@ const App: React.FC = () => {
         // Reset form for next entry
         handleReset();
 
-    }, [sku, selectedProductType, price, imageSource, productName, suggestedTags, selectedCategories, savedProducts, handleReset, selectedBrandId, model, variants]);
+    }, [sku, selectedProductType, price, imageSource, productName, suggestedTags, shortDescription, longDescription, selectedCategories, selectedAttributes, savedProducts, handleReset, selectedBrandId, model, variants]);
     
     const handleDownloadCsv = useCallback(() => {
-        const csvContent = generateCsvContent(savedProducts, CATEGORIES, BRANDS);
+        const csvContent = generateCsvContent(savedProducts, CATEGORIES, BRANDS, ATTRIBUTES);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         if (link.href) {
@@ -226,6 +277,19 @@ const App: React.FC = () => {
         link.click();
         document.body.removeChild(link);
     }, [savedProducts]);
+
+    const handleClearAllData = useCallback(() => {
+        if (window.confirm('Are you sure you want to delete all saved products? This action cannot be undone.')) {
+            try {
+                localStorage.removeItem('savedProducts');
+                setSavedProducts([]);
+                setIsModalOpen(false); // Close modal after clearing
+            } catch (e) {
+                console.error("Failed to clear data from localStorage", e);
+                setError("Could not clear saved products. Your browser's storage settings might be disabled or full.");
+            }
+        }
+    }, []);
 
     const isDetailsComplete = !!sku && !!selectedProductType && !!selectedBrandId;
 
@@ -267,6 +331,8 @@ const App: React.FC = () => {
         transition: 'background-color 0.2s',
     };
 
+    const analysisButtonReady = isDetailsComplete && !!imageFile && !isLoading && !analysisCompleted;
+
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#111827', color: '#F9FAFB', padding: '2rem' }}>
             <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -276,7 +342,7 @@ const App: React.FC = () => {
                             AI Product Categorizer
                         </h1>
                         <p style={{ marginTop: '0.5rem', fontSize: '1.125rem', color: '#9CA3AF', margin: 0 }}>
-                            Enter product details and upload an image to automatically assign categories.
+                            Enter product details and upload an image to automatically assign categories & attributes.
                         </p>
                     </div>
                      {savedProducts.length > 0 && (
@@ -313,7 +379,7 @@ const App: React.FC = () => {
                                         id="productType"
                                         value={selectedProductType}
                                         onChange={e => setSelectedProductType(e.target.value as 'watch' | 'glasses' | '')}
-                                        style={{ ...inputStyle, appearance: 'none' }}
+                                        style={{ ...inputStyle, appearance: 'none', background: 'url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e") no-repeat right 0.75rem center/1.5em 1.5em' }}
                                     >
                                         <option value="">-- Select a type --</option>
                                         <option value="watch">Watch</option>
@@ -322,17 +388,12 @@ const App: React.FC = () => {
                                 </div>
                                 <div>
                                     <label htmlFor="brand" style={labelStyle}>Brand <span style={{color: '#F87171'}}>*</span></label>
-                                    <select
-                                        id="brand"
+                                    <SearchableSelect
+                                        options={BRANDS}
                                         value={selectedBrandId}
-                                        onChange={e => setSelectedBrandId(e.target.value)}
-                                        style={{ ...inputStyle, appearance: 'none' }}
-                                    >
-                                        <option value="">-- Select a brand --</option>
-                                        {BRANDS.map(brand => (
-                                            <option key={brand.id} value={brand.id}>{brand.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={setSelectedBrandId}
+                                        placeholder="-- Select a brand --"
+                                    />
                                 </div>
                                 <div>
                                     <label htmlFor="model" style={labelStyle}>Model</label>
@@ -356,6 +417,17 @@ const App: React.FC = () => {
                                         style={inputStyle}
                                     />
                                 </div>
+                                <div>
+                                    <label htmlFor="userProvidedDetails" style={labelStyle}>Product Notes / Details</label>
+                                    <textarea
+                                        id="userProvidedDetails"
+                                        placeholder="Add any extra details, features, or notes about the product here..."
+                                        value={userProvidedDetails}
+                                        onChange={e => setUserProvidedDetails(e.target.value)}
+                                        rows={5}
+                                        style={{...inputStyle, resize: 'vertical'}}
+                                    />
+                                </div>
                             </div>
                         </div>
                         <ImageUploader
@@ -371,44 +443,81 @@ const App: React.FC = () => {
                         />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
-                       { (imageFile || isLoading) ? (
+                       { (isLoading || analysisCompleted) ? (
                            <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', flexGrow: 1, opacity: isLoading ? 0.6 : 1, transition: 'opacity 0.3s' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1.5rem' }}>3. Review & Adjust</h2>
 
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label htmlFor="productName" style={labelStyle}>Product Name</label>
-                                    <input
-                                        id="productName"
-                                        type="text"
-                                        placeholder={isLoading ? "Generating..." : "e.g. Brand Model Feature Watch"}
-                                        value={productName}
-                                        onChange={e => setProductName(e.target.value)}
-                                        disabled={isLoading}
-                                        style={inputStyle}
-                                    />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto', flexGrow: 1, paddingRight: '0.5rem' }}>
+                                    <div>
+                                        <label htmlFor="productName" style={labelStyle}>Product Name</label>
+                                        <input
+                                            id="productName"
+                                            type="text"
+                                            placeholder={isLoading ? "Generating..." : "e.g. Brand Model Feature Watch"}
+                                            value={productName}
+                                            onChange={e => setProductName(e.target.value)}
+                                            disabled={isLoading}
+                                            style={inputStyle}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="suggestedTags" style={labelStyle}>Suggested Tags</label>
+                                        <textarea
+                                            id="suggestedTags"
+                                            placeholder={isLoading ? "Generating..." : "e.g. water-resistant, luminous hands"}
+                                            value={suggestedTags}
+                                            onChange={e => setSuggestedTags(e.target.value)}
+                                            disabled={isLoading}
+                                            rows={2}
+                                            style={{...inputStyle, resize: 'vertical'}}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="shortDescription" style={labelStyle}>Short Description</label>
+                                        <textarea
+                                            id="shortDescription"
+                                            placeholder={isLoading ? "Generating..." : "A short, catchy description will appear here."}
+                                            value={shortDescription}
+                                            onChange={e => setShortDescription(e.target.value)}
+                                            disabled={isLoading}
+                                            rows={3}
+                                            style={{...inputStyle, resize: 'vertical'}}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="longDescription" style={labelStyle}>Long Description (HTML)</label>
+                                        <textarea
+                                            id="longDescription"
+                                            placeholder={isLoading ? "Generating..." : "A detailed, HTML-formatted description for WooCommerce will appear here."}
+                                            value={longDescription}
+                                            onChange={e => setLongDescription(e.target.value)}
+                                            disabled={isLoading}
+                                            rows={10}
+                                            style={{...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.875rem'}}
+                                        />
+                                    </div>
+                                    
+                                    { selectedProductType && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', minHeight: '300px' }}>
+                                            <CategorySelector
+                                                title={'Product Categories'}
+                                                categoryTree={selectedProductType === 'watch' ? watchCategoryTree : glassCategoryTree}
+                                                selectedCategories={selectedCategories}
+                                                onCategoryToggle={handleCategoryToggle}
+                                                isLoading={isLoading}
+                                            />
+                                            <AttributeSelector
+                                                title={'Product Attributes'}
+                                                attributes={selectedProductType === 'watch' ? watchAttributes : glassAttributes}
+                                                selectedAttributes={selectedAttributes}
+                                                onAttributeToggle={handleAttributeToggle}
+                                                isLoading={isLoading}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <div style={{ marginBottom: '1.5rem' }}>
-                                    <label htmlFor="suggestedTags" style={labelStyle}>Suggested Tags</label>
-                                    <textarea
-                                        id="suggestedTags"
-                                        placeholder={isLoading ? "Generating..." : "e.g. water-resistant, luminous hands"}
-                                        value={suggestedTags}
-                                        onChange={e => setSuggestedTags(e.target.value)}
-                                        disabled={isLoading}
-                                        rows={3}
-                                        style={{...inputStyle, resize: 'vertical'}}
-                                    />
-                                </div>
-                                
-                                { selectedProductType && (
-                                    <CategorySelector
-                                        title={'Product Categories'}
-                                        categoryTree={selectedProductType === 'watch' ? watchCategoryTree : glassCategoryTree}
-                                        selectedCategories={selectedCategories}
-                                        onCategoryToggle={handleCategoryToggle}
-                                        isLoading={isLoading}
-                                    />
-                                )}
                                 
                                 {/* Variants Section */}
                                 <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #374151' }}>
@@ -451,9 +560,28 @@ const App: React.FC = () => {
                                     </button>
                                 </div>
                            </div>
+                       ) : imageFile ? (
+                           <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F2937', borderRadius: '0.75rem' }}>
+                                <button
+                                    onClick={handleStartAnalysis}
+                                    disabled={!analysisButtonReady}
+                                    style={{
+                                        ...buttonStyle,
+                                        padding: '1rem 2rem',
+                                        fontSize: '1.125rem',
+                                        backgroundColor: '#4F46E5',
+                                        ...(!analysisButtonReady ? { backgroundColor: '#374151', cursor: 'not-allowed' } : {})
+                                    }}
+                                    onMouseOver={e => { if (analysisButtonReady) e.currentTarget.style.backgroundColor='#6366F1'; }}
+                                    onMouseOut={e => { if (analysisButtonReady) e.currentTarget.style.backgroundColor='#4F46E5'; }}
+                                >
+                                    <SparklesIcon />
+                                    <span style={{ marginLeft: '0.75rem' }}>Analyze Product</span>
+                                </button>
+                           </div>
                        ) : (
                             <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F2937', borderRadius: '0.75rem', border: '2px dashed #4B5563', color: '#6B7280' }}>
-                                <p style={{ fontSize: '1rem', fontWeight: 500, textAlign: 'center', padding: '1rem' }}>Results will appear here after uploading an image.</p>
+                                <p style={{ fontSize: '1rem', fontWeight: 500, textAlign: 'center', padding: '1rem' }}>Results will appear here after analyzing an image.</p>
                             </div>
                        )}
                     </div>
@@ -466,7 +594,7 @@ const App: React.FC = () => {
                     </a>
                 </footer>
             </div>
-            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={handleDownloadCsv} brands={BRANDS} />}
+            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={handleDownloadCsv} onClearAll={handleClearAllData} brands={BRANDS} />}
         </div>
     );
 };

@@ -1,16 +1,19 @@
-import type { SavedProduct, Category, Brand } from '../types';
+import type { SavedProduct, Category, Brand, Attribute } from '../types';
 
-export const generateCsvContent = (products: SavedProduct[], allCategories: Category[], allBrands: Brand[]): string => {
+export const generateCsvContent = (products: SavedProduct[], allCategories: Category[], allBrands: Brand[], allAttributes: Attribute[]): string => {
     if (products.length === 0) {
         return '';
     }
 
     const categoryMap = new Map<number, string>(allCategories.map(cat => [cat.id, cat.name]));
     const brandMap = new Map<number, string>(allBrands.map(brand => [brand.id, brand.name]));
+    const attributeMap = new Map<number, string>(allAttributes.map(attr => [attr.id, attr.name]));
 
     const headers = [
         'SKU',
         'Product Name',
+        'Short Description',
+        'Long Description',
         'Product Type',
         'Brand ID',
         'Brand Name',
@@ -20,6 +23,8 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
         'Suggested Tags',
         'Category IDs',
         'Category Names',
+        'Attribute IDs',
+        'Attribute Names',
         'Variant SKU',
         'Color',
         'Size',
@@ -32,6 +37,12 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
             .join('; '); // Using semicolon to avoid CSV issues with names containing commas
             
         const categoryIds = product.categoryIds.join('; ');
+
+        const attributeNames = product.attributeIds
+            .map(id => attributeMap.get(id) || 'Unknown Attribute')
+            .join('; ');
+            
+        const attributeIds = product.attributeIds.join('; ');
 
         const brandName = product.brandId ? brandMap.get(product.brandId) || 'Unknown Brand' : '';
 
@@ -49,6 +60,8 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
         return [
             escapeCsvField(product.sku),
             escapeCsvField(product.productName),
+            escapeCsvField(product.shortDescription),
+            escapeCsvField(product.longDescription),
             escapeCsvField(product.productType),
             escapeCsvField(product.brandId),
             escapeCsvField(brandName),
@@ -58,6 +71,8 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
             escapeCsvField(product.suggestedTags),
             escapeCsvField(categoryIds),
             escapeCsvField(categoryNames),
+            escapeCsvField(attributeIds),
+            escapeCsvField(attributeNames),
             escapeCsvField(product.variantSku),
             escapeCsvField(product.variantColor),
             escapeCsvField(product.variantSize),

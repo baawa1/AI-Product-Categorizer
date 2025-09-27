@@ -1,15 +1,16 @@
 import React, { useMemo } from 'react';
 import type { SavedProduct, Brand } from '../types';
-import { CloseIcon, DownloadIcon } from './icons';
+import { CloseIcon, DownloadIcon, TrashIcon } from './icons';
 
 interface SavedProductsModalProps {
     products: SavedProduct[];
     onClose: () => void;
     onDownload: () => void;
+    onClearAll: () => void;
     brands: Brand[];
 }
 
-export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products, onClose, onDownload, brands }) => {
+export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products, onClose, onDownload, onClearAll, brands }) => {
     
     const brandMap = useMemo(() => new Map<number, string>(brands.map(brand => [brand.id, brand.name])), [brands]);
 
@@ -94,7 +95,16 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
             <div style={contentStyle} onClick={e => e.stopPropagation()}>
                 <header style={headerStyle}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Saved Products ({products.length})</h2>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                         <button
+                            style={{...buttonStyle, backgroundColor: '#DC2626'}}
+                            onMouseOver={e => e.currentTarget.style.backgroundColor='#EF4444'}
+                            onMouseOut={e => e.currentTarget.style.backgroundColor='#DC2626'}
+                            onClick={onClearAll}
+                         >
+                            <TrashIcon />
+                            <span style={{marginLeft: '0.5rem'}}>Clear All Data</span>
+                         </button>
                          <button
                             style={{...buttonStyle, backgroundColor: '#16A34A'}}
                             onMouseOver={e => e.currentTarget.style.backgroundColor='#22C55E'}
@@ -128,7 +138,7 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                             </tr>
                         </thead>
                         <tbody>
-                            {products.map((product, index) => (
+                            {products.length > 0 ? products.map((product, index) => (
                                 <tr key={`${product.sku}-${product.variantSku || index}`} style={{ backgroundColor: '#1F2937' }}>
                                     <td style={{ ...tdStyle, fontWeight: 500 }}>{product.sku}</td>
                                     <td style={tdStyle}>{product.variantSku || 'N/A'}</td>
@@ -139,7 +149,13 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                                     <td style={tdStyle}>{product.variantSize || 'N/A'}</td>
                                     <td style={tdStyle}>{product.price}</td>
                                 </tr>
-                            ))}
+                            )) : (
+                                <tr>
+                                    <td colSpan={8} style={{...tdStyle, textAlign: 'center', color: '#6B7280', padding: '2rem'}}>
+                                        No products saved yet.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

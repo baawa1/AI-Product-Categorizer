@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { CategoryNode } from '../types';
 import { CheckIcon } from './icons';
@@ -95,9 +94,9 @@ const CategoryNodeRenderer: React.FC<{
 
 export const CategorySelector: React.FC<CategorySelectorProps> = ({ title, categoryTree, selectedCategories, onCategoryToggle }) => {
     return (
-         <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0 }}>
+         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#FFFFFF', borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem', marginTop: 0 }}>{title}</h3>
-             <div style={{ overflowY: 'auto', flexGrow: 1 }}>
+             <div style={{ overflowY: 'auto', flexGrow: 1, paddingRight: '0.5rem' }}>
                  <div>
                     {categoryTree.map(node => (
                         <CategoryNodeRenderer

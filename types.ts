@@ -9,6 +9,13 @@ export interface Brand {
   name: string;
 }
 
+export interface Attribute {
+    id: number;
+    name: string;
+    group: string;
+    type: 'watch' | 'glasses';
+}
+
 export interface CategoryNode extends Category {
   children: CategoryNode[];
 }
@@ -28,7 +35,10 @@ export interface SavedProduct {
     imageSource: string;
     productName: string;
     suggestedTags: string;
+    shortDescription: string;
+    longDescription: string;
     categoryIds: number[];
+    attributeIds: number[];
     brandId: number | null;
     model: string;
     // Variant-specific fields

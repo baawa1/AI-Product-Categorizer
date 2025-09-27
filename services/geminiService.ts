@@ -1,13 +1,16 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { CATEGORIES, BRANDS } from '../constants';
+import { CATEGORIES, BRANDS, ATTRIBUTES } from '../constants';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 const model = 'gemini-2.5-flash';
 
 interface CategorizationResult {
   categoryIds: number[];
+  attributeIds: number[];
   productName: string;
   suggestedTags: string;
+  shortDescription: string;
+  longDescription: string;
 }
 
 const fileToGenerativePart = async (file: File) => {
@@ -26,7 +29,8 @@ export const categorizeProduct = async (
     productType: 'watch' | 'glasses',
     brandId: number | null,
     modelStr: string | undefined,
-    price?: string
+    price?: string,
+    userProvidedDetails?: string
 ): Promise<CategorizationResult> => {
   try {
     const imagePart = await fileToGenerativePart(imageFile);
@@ -43,27 +47,66 @@ export const categorizeProduct = async (
     }
     contextInfo += ".";
 
+    const relevantAttributes = ATTRIBUTES.filter(attr => attr.type === productType);
+    const locationCategories = [
+        { id: 4566, name: 'Watches Abeokuta' },
+        { id: 4565, name: 'Watches Abuja' },
+        { id: 4564, name: 'Watches Lagos' },
+        { id: 4521, name: 'Watches Port Harcourt' },
+    ];
 
     const prompt = `${contextInfo}
-You are an expert e-commerce product categorizer for a store in Nigeria. Your task is to analyze the product and return a structured JSON response.
+You are an expert e-commerce copywriter with the wisdom of David Ogilvy, writing for a modern Nigerian online store. Your tone is factual, benefit-driven, and aspirational. You sell with information, not fluff. Your goal is to create content that is highly optimized for SEO and conversion.
 
-Instructions:
-1.  Generate a descriptive product name. Use the provided Brand ("${brandName}") and Model ("${modelStr || 'N/A'}") as the foundation. Combine them with key features and gender. Example: "Cartier TY786C Men's Leather Chronograph Watch".
-2.  Identify any other distinct features or characteristics visible in the image that are not covered by the categories list. List these as a comma-separated string of tags. Example: "luminous hands, date display, sapphire crystal".
-3.  Analyze the product's specific features (style, material, gender, type, etc.) from the image to select relevant categories.
-4.  If a price is provided, use it to select the correct price range category (e.g., 'Watches Under 20000 Naira').
-5.  Select ALL applicable sub-categories from the list that accurately describe the product.
-6.  You MUST also select the top-level parent category for the given product type ('Watches Nigeria' (ID 4287) for a watch, or 'Glasses Nigeria' (ID 4296) for glasses).
+Here are additional details provided by the user:
+"${userProvidedDetails || 'No additional details provided. Rely solely on the image and product info.'}"
 
-Here is the complete list of available categories with their ID, Name, and Parent ID:
-${CATEGORIES.map(c => `- ID: ${c.id}, Name: ${c.name}, Parent: ${c.parent}`).join('\n')}
+**Your Five Tasks:**
 
-Analyze the image and return a JSON object containing:
-- "productName": The generated product name.
-- "suggestedTags": A comma-separated string of extra features or tags.
-- "categoryIds": An array of the IDs for all categories that best describe the product.
+1.  **Generate Product Name**: Create a clear, keyword-rich product name that incorporates the most impactful and searchable features you identify.
+    -   **Foundation**: [Brand] [Model] [Key Feature 1] [Key Feature 2] [Gender] [Product Type].
+    -   Draw keywords from the most relevant attributes and categories you select. For example, if the watch is a chronograph with a leather band, include those terms. If the glasses have acetate frames and blue light filtering, include those.
+    -   **Examples**: "Casio G-Shock Men's Chronograph Leather Watch", "Ray-Ban Women's Acetate Titanium Blue Light Filter Glasses".
 
-Only return IDs from the list provided.
+2.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string. Example: "shock resistant, 200m water resistance, luminous hands, gold accents".
+
+3.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit. Example: "A testament to resilience and bold design, this G-Shock is crafted for the modern man who demands both extreme durability and undeniable style."
+
+4.  **Generate Long Description (Ogilvy Style for Nigeria)**:
+    -   Write a detailed, SEO-optimized description.
+    -   **Tone & Style**: Factual, confident, and benefit-oriented. Use sensory details (e.g., "the smooth, comfortable resin band," "the crisp, luminous display"). Subtly weave in local relevance (e.g., "built to withstand the hustle of a Lagos lifestyle," "a statement of sophistication in Abuja").
+    -   **Structure**: Start with a strong opening paragraph. Use an 'h3' tag for "Key Features". List features in a 'ul' tag with 'strong' tags for the feature name. End with a short, aspirational "call to value" paragraph.
+    -   **ABSOLUTE CRITICAL FORMATTING RULE**: The most important instruction is to generate the HTML for the long description with proper indentation and newlines for human readability. You have a large token budget, so do not minify the HTML to save space. Prioritize readability above all else. Your entire response is considered a failure if this rule is not followed. DO NOT return a minified, single-line HTML string.
+        *Example of the EXACT required format:*
+        \`\`\`html
+        <h2>Casio G-Shock 4576 Men's White Resin Watch</h2>
+        <p>
+          A testament to resilience and bold design, this Casio G-Shock is crafted for the modern Nigerian man who demands both extreme durability and undeniable style. Built to withstand the toughest challenges, from the daily commute in Lagos to outdoor adventures, its legendary shock resistance ensures performance you can trust.
+        </p>
+        <h3>Key Features:</h3>
+        <ul>
+          <li><strong>Legendary Durability:</strong> The iconic shock-resistant construction protects against impacts and vibration.</li>
+          <li><strong>Superior Water Resistance:</strong> With a 200-meter (20 BAR) water resistance rating, it's perfect for swimming and diving.</li>
+          <li><strong>Crisp Display:</strong> The high-contrast analog-digital display features a luminous LED backlight for perfect readability in any light.</li>
+        </ul>
+        <p>
+          Elevate your wrist game. This G-Shock is not just a timepiece; it's a statement of strength and sophistication.
+        </p>
+        \`\`\`
+
+5.  **Categorize & Attribute**:
+    -   Select ALL relevant categories from the list provided. You MUST include the main parent category ('Watches Nigeria' or 'Glasses Nigeria').
+    -   If it's a watch, you MUST RANDOMLY select exactly ONE location category: ${locationCategories.map(c => `${c.name} (ID: ${c.id})`).join(', ')}.
+    -   Select ALL relevant attributes from the provided list.
+
+**Data Lists for Categorization:**
+Available Categories:
+${CATEGORIES.map(c => `- ID: ${c.id}, Name: ${c.name}`).join('\n')}
+
+Available Attributes for a ${productType}:
+${relevantAttributes.map(a => `- ID: ${a.id}, Name: ${a.name}, Group: ${a.group}`).join('\n')}
+
+Now, analyze the product and return the complete JSON object.
     `;
 
     const response = await ai.models.generateContent({
@@ -82,31 +125,54 @@ Only return IDs from the list provided.
               type: Type.STRING,
               description: 'A comma-separated list of suggested tags.'
             },
+            shortDescription: {
+                type: Type.STRING,
+                description: 'A concise, compelling short description (1-2 sentences).'
+            },
+            longDescription: {
+                type: Type.STRING,
+                description: 'A detailed, SEO-optimized long description formatted with readable, indented HTML for WooCommerce.'
+            },
             categoryIds: {
               type: Type.ARRAY,
               items: {
                 type: Type.INTEGER,
                 description: 'The ID of a relevant product category.'
               }
+            },
+            attributeIds: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.INTEGER,
+                description: 'The ID of a relevant product attribute.'
+              }
             }
           },
-          required: ['productName', 'suggestedTags', 'categoryIds']
+          required: ['productName', 'suggestedTags', 'shortDescription', 'longDescription', 'categoryIds', 'attributeIds']
         },
-        temperature: 0.1,
+        temperature: 0.1, // Reduced for stricter adherence to formatting rules
+        maxOutputTokens: 8192, // Increased token limit for detailed, formatted HTML
+        thinkingConfig: { thinkingBudget: 2048 },
       }
     });
-
-    const jsonString = response.text;
+    // FIX: Add trim() to handle potential leading/trailing whitespace from the model response.
+    const jsonString = response.text.trim();
     const result = JSON.parse(jsonString);
 
-    if (result && typeof result.productName === 'string' && typeof result.suggestedTags === 'string' && Array.isArray(result.categoryIds)) {
-      const validIds = result.categoryIds.filter((id: unknown) => 
+    if (result && typeof result.productName === 'string' && typeof result.suggestedTags === 'string' && typeof result.shortDescription === 'string' && typeof result.longDescription === 'string' && Array.isArray(result.categoryIds) && Array.isArray(result.attributeIds)) {
+      const validCategoryIds = result.categoryIds.filter((id: unknown) => 
         typeof id === 'number' && CATEGORIES.some(c => c.id === id)
       );
+      const validAttributeIds = result.attributeIds.filter((id: unknown) =>
+        typeof id === 'number' && ATTRIBUTES.some(a => a.id === id)
+      );
       return { 
-          categoryIds: validIds,
+          categoryIds: validCategoryIds,
+          attributeIds: validAttributeIds,
           productName: result.productName,
           suggestedTags: result.suggestedTags,
+          shortDescription: result.shortDescription,
+          longDescription: result.longDescription,
       };
     }
     
