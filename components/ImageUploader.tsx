@@ -11,11 +11,12 @@ interface ImageUploaderProps {
     error: string | null;
     hasImage: boolean;
     disabled: boolean;
+    hideReset?: boolean;
 }
 
 type Tab = 'upload' | 'url';
 
-export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageSelect, onImageUrlFetch, onReset, isLoading, isFetchingImage, error, hasImage, disabled }) => {
+export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageSelect, onImageUrlFetch, onReset, isLoading, isFetchingImage, error, hasImage, disabled, hideReset }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<Tab>('upload');
     const [urlInputValue, setUrlInputValue] = useState('');
@@ -78,7 +79,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageS
         <div style={containerStyle}>
              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>2. Upload Product Image</h2>
              
-             {!hasImage && (
+             {!hasImage && !disabled && (
                 <div style={{ display: 'flex', marginBottom: '1rem', borderBottom: '1px solid #374151' }}>
                     <button style={tabButtonStyle(activeTab === 'upload')} onClick={() => setActiveTab('upload')} disabled={disabled}>
                         Upload File
@@ -89,7 +90,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageS
                 </div>
              )}
 
-            {activeTab === 'upload' && !hasImage && (
+            {activeTab === 'upload' && !hasImage && !disabled && (
                 <div
                     style={{
                         position: 'relative',
@@ -115,7 +116,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageS
                 </div>
             )}
             
-            {activeTab === 'url' && !hasImage && (
+            {activeTab === 'url' && !hasImage && !disabled && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <input
                         type="text"
@@ -189,7 +190,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ imageUrl, onImageS
             />
 
             {error && <p style={{ color: '#F87171', marginTop: '1rem', textAlign: 'center' }}>{error}</p>}
-             {hasImage && !isLoading && (
+             {hasImage && !isLoading && !hideReset && (
                 <button
                     onClick={onReset}
                     style={{

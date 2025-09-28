@@ -1,3 +1,4 @@
+
 export interface Category {
   id: number;
   name: string;
@@ -41,9 +42,31 @@ export interface SavedProduct {
     attributeIds: number[];
     brandId: number | null;
     model: string;
+    isReviewed?: boolean;
     // Variant-specific fields
     variantSku?: string;
     variantColor?: string;
     variantSize?: string;
     variantOther?: string;
+}
+
+// Types for Bulk Import Feature
+export interface CsvProduct {
+    sku: string;
+    productType: 'watch' | 'glasses' | '';
+    brandName: string;
+    model: string;
+    price: string;
+    userProvidedDetails: string;
+    imageUrl: string;
+}
+
+export interface BulkProduct {
+    id: number; // For stable keys in React
+    source: CsvProduct;
+    status: 'pending' | 'processing' | 'completed' | 'error';
+    isReviewed: boolean;
+    error?: string;
+    imageFile?: File;
+    result?: SavedProduct;
 }

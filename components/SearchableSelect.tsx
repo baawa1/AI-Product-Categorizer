@@ -6,9 +6,10 @@ interface SearchableSelectProps {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
+    disabled?: boolean;
 }
 
-export const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder }) => {
+export const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder, disabled = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -53,11 +54,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, val
         borderRadius: '0.375rem',
         padding: '0.625rem 0.75rem',
         textAlign: 'left',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        opacity: disabled ? 0.7 : 1,
     };
 
     const dropdownStyle: React.CSSProperties = {
@@ -105,9 +107,10 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, val
             <button
                 type="button"
                 style={selectButtonStyle}
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={() => !disabled && setIsOpen(!isOpen)}
                 aria-haspopup="listbox"
                 aria-expanded={isOpen}
+                disabled={disabled}
             >
                 {selectedOption ? selectedOption.name : placeholder}
                 <span style={{
