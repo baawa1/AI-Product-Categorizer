@@ -8,7 +8,7 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
     const brandMap = new Map<number, string>(allBrands.map(brand => [brand.id, brand.name]));
     const attributeMap = new Map<number, string>(allAttributes.map(attr => [attr.id, attr.name]));
 
-    const headers = ['SKU', 'Product Name', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
+    const headers = ['SKU', 'Product Name', 'Title Tag', 'Meta Description', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
     
     const rows = products.map(product => {
         const categoryNames = product.categoryIds.map(id => categoryMap.get(id) || '').join('; ');
@@ -22,7 +22,7 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
         };
         
         return [
-            escapeCsvField(product.sku), escapeCsvField(product.productName), escapeCsvField(product.shortDescription),
+            escapeCsvField(product.sku), escapeCsvField(product.productName), escapeCsvField(product.titleTag), escapeCsvField(product.metaDescription), escapeCsvField(product.shortDescription),
             escapeCsvField(product.longDescription), escapeCsvField(product.productType), escapeCsvField(product.brandId),
             escapeCsvField(brandName), escapeCsvField(product.model), escapeCsvField(product.price),
             escapeCsvField(product.imageSource), escapeCsvField(product.suggestedTags), escapeCsvField(product.categoryIds.join('; ')),

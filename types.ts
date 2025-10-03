@@ -35,6 +35,8 @@ export interface SavedProduct {
     price: string;
     imageSource: string;
     productName: string;
+    titleTag: string;
+    metaDescription: string;
     suggestedTags: string;
     shortDescription: string;
     longDescription: string;

@@ -33,6 +33,8 @@ const ProductEditor: React.FC<{
     const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set(initialData.categoryIds || []));
     const [selectedAttributes, setSelectedAttributes] = useState<Set<number>>(new Set(initialData.attributeIds || []));
     const [productName, setProductName] = useState<string>(initialData.productName || '');
+    const [titleTag, setTitleTag] = useState<string>(initialData.titleTag || '');
+    const [metaDescription, setMetaDescription] = useState<string>(initialData.metaDescription || '');
     const [suggestedTags, setSuggestedTags] = useState<string>(initialData.suggestedTags || '');
     const [shortDescription, setShortDescription] = useState<string>(initialData.shortDescription || '');
     const [longDescription, setLongDescription] = useState<string>(initialData.longDescription || '');
@@ -59,7 +61,7 @@ const ProductEditor: React.FC<{
         setAnalysisCompleted(false);
         // Do not reset fields, user might have pre-filled them
         try {
-            const { categoryIds, attributeIds, productName, suggestedTags, shortDescription, longDescription } = await categorizeProduct(
+            const { categoryIds, attributeIds, productName, titleTag, metaDescription, suggestedTags, shortDescription, longDescription } = await categorizeProduct(
                 imageFile,
                 selectedProductType,
                 selectedBrandId ? parseInt(selectedBrandId, 10) : null,
@@ -70,6 +72,8 @@ const ProductEditor: React.FC<{
             setSelectedCategories(new Set(categoryIds));
             setSelectedAttributes(new Set(attributeIds));
             setProductName(productName);
+            setTitleTag(titleTag);
+            setMetaDescription(metaDescription);
             setSuggestedTags(suggestedTags);
             setShortDescription(shortDescription);
             setLongDescription(longDescription);
@@ -149,6 +153,8 @@ const ProductEditor: React.FC<{
             price: price || 'N/A',
             imageSource,
             productName,
+            titleTag,
+            metaDescription,
             suggestedTags,
             shortDescription,
             longDescription,
@@ -227,6 +233,8 @@ const ProductEditor: React.FC<{
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto', flexGrow: 1, paddingRight: '0.5rem' }}>
                             {/* Form fields */}
                             <div><label htmlFor="productName" style={labelStyle}>Product Name</label><input id="productName" type="text" placeholder={isLoading ? "Generating..." : ""} value={productName} onChange={e => setProductName(e.target.value)} disabled={isLoading} style={inputStyle} /></div>
+                            <div><label htmlFor="titleTag" style={labelStyle}>SEO Title Tag</label><input id="titleTag" type="text" placeholder={isLoading ? "Generating..." : ""} value={titleTag} onChange={e => setTitleTag(e.target.value)} disabled={isLoading} style={inputStyle} /></div>
+                            <div><label htmlFor="metaDescription" style={labelStyle}>SEO Meta Description</label><textarea id="metaDescription" placeholder={isLoading ? "Generating..." : ""} value={metaDescription} onChange={e => setMetaDescription(e.target.value)} disabled={isLoading} rows={3} style={{...inputStyle, resize: 'vertical'}} /></div>
                             <div><label htmlFor="suggestedTags" style={labelStyle}>Suggested Tags</label><textarea id="suggestedTags" placeholder={isLoading ? "Generating..." : ""} value={suggestedTags} onChange={e => setSuggestedTags(e.target.value)} disabled={isLoading} rows={2} style={{...inputStyle, resize: 'vertical'}} /></div>
                             <div><label htmlFor="shortDescription" style={labelStyle}>Short Description</label><textarea id="shortDescription" placeholder={isLoading ? "Generating..." : ""} value={shortDescription} onChange={e => setShortDescription(e.target.value)} disabled={isLoading} rows={3} style={{...inputStyle, resize: 'vertical'}} /></div>
                             <div><label htmlFor="longDescription" style={labelStyle}>Long Description (HTML)</label><textarea id="longDescription" placeholder={isLoading ? "Generating..." : ""} value={longDescription} onChange={e => setLongDescription(e.target.value)} disabled={isLoading} rows={10} style={{...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.875rem'}} /></div>

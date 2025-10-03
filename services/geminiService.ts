@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { CATEGORIES, BRANDS, ATTRIBUTES } from '../constants';
 
@@ -8,6 +9,8 @@ interface CategorizationResult {
   categoryIds: number[];
   attributeIds: number[];
   productName: string;
+  titleTag: string;
+  metaDescription: string;
   suggestedTags: string;
   shortDescription: string;
   longDescription: string;
@@ -61,18 +64,22 @@ You are an expert e-commerce copywriter with the wisdom of David Ogilvy, writing
 Here are additional details provided by the user:
 "${userProvidedDetails || 'No additional details provided. Rely solely on the image and product info.'}"
 
-**Your Five Tasks:**
+**Your Seven Tasks:**
 
 1.  **Generate Product Name**: Create a clear, keyword-rich product name that incorporates the most impactful and searchable features you identify.
     -   **Foundation**: [Brand] [Model] [Key Feature 1] [Key Feature 2] [Gender] [Product Type].
     -   Draw keywords from the most relevant attributes and categories you select. For example, if the watch is a chronograph with a leather band, include those terms. If the glasses have acetate frames and blue light filtering, include those.
     -   **Examples**: "Casio G-Shock Men's Chronograph Leather Watch", "Ray-Ban Women's Acetate Titanium Blue Light Filter Glasses".
 
-2.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string. Example: "shock resistant, 200m water resistance, luminous hands, gold accents".
+2.  **Generate SEO Title Tag**: Create a concise, keyword-rich title tag (50-60 characters). Start with the primary keyword (e.g., Brand + Model + Type). The title must be compelling for search engine users.
 
-3.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit. Example: "A testament to resilience and bold design, this G-Shock is crafted for the modern man who demands both extreme durability and undeniable style."
+3.  **Generate Meta Description**: Write a compelling meta description (150-160 characters). It must entice clicks and include the phrase "We deliver to all states in Nigeria, including Lagos, PH, Abuja, and Kaduna.".
 
-4.  **Generate Long Description (Ogilvy Style for Nigeria)**:
+4.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string. Example: "shock resistant, 200m water resistance, luminous hands, gold accents".
+
+5.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit. Example: "A testament to resilience and bold design, this G-Shock is crafted for the modern man who demands both extreme durability and undeniable style."
+
+6.  **Generate Long Description (Ogilvy Style for Nigeria)**:
     -   Write a detailed, SEO-optimized description.
     -   **Tone & Style**: Factual, confident, and benefit-oriented. Use sensory details (e.g., "the smooth, comfortable resin band," "the crisp, luminous display"). Subtly weave in local relevance (e.g., "built to withstand the hustle of a Lagos lifestyle," "a statement of sophistication in Abuja").
     -   **Structure**: Start with a strong opening paragraph. Use an 'h3' tag for "Key Features". List features in a 'ul' tag with 'strong' tags for the feature name. End with a short, aspirational "call to value" paragraph.
@@ -94,9 +101,9 @@ Here are additional details provided by the user:
         </p>
         \`\`\`
 
-5.  **Categorize & Attribute**:
+7.  **Categorize & Attribute**:
     -   Select ALL relevant categories from the list provided. You MUST include the main parent category ('Watches Nigeria' or 'Glasses Nigeria').
-    -   If it's a watch, you MUST RANDOMLY select exactly ONE location category: ${locationCategories.map(c => `${c.name} (ID: ${c.id})`).join(', ')}.
+    -   If it's a watch, you MUST RANDOMLY select exactly TWO location categories: ${locationCategories.map(c => `${c.name} (ID: ${c.id})`).join(', ')}.
     -   Select ALL relevant attributes from the provided list.
 
 **Data Lists for Categorization:**
@@ -120,6 +127,14 @@ Now, analyze the product and return the complete JSON object.
             productName: {
               type: Type.STRING,
               description: 'A descriptive name for the product.'
+            },
+            titleTag: {
+                type: Type.STRING,
+                description: 'An SEO-optimized title tag for the product (50-60 characters).'
+            },
+            metaDescription: {
+                type: Type.STRING,
+                description: 'An SEO-optimized meta description for the product (150-160 characters), including the delivery information.'
             },
             suggestedTags: {
               type: Type.STRING,
@@ -148,7 +163,7 @@ Now, analyze the product and return the complete JSON object.
               }
             }
           },
-          required: ['productName', 'suggestedTags', 'shortDescription', 'longDescription', 'categoryIds', 'attributeIds']
+          required: ['productName', 'titleTag', 'metaDescription', 'suggestedTags', 'shortDescription', 'longDescription', 'categoryIds', 'attributeIds']
         },
         temperature: 0.1, // Reduced for stricter adherence to formatting rules
         maxOutputTokens: 8192, // Increased token limit for detailed, formatted HTML
@@ -159,7 +174,7 @@ Now, analyze the product and return the complete JSON object.
     const jsonString = response.text.trim();
     const result = JSON.parse(jsonString);
 
-    if (result && typeof result.productName === 'string' && typeof result.suggestedTags === 'string' && typeof result.shortDescription === 'string' && typeof result.longDescription === 'string' && Array.isArray(result.categoryIds) && Array.isArray(result.attributeIds)) {
+    if (result && typeof result.productName === 'string' && typeof result.titleTag === 'string' && typeof result.metaDescription === 'string' && typeof result.suggestedTags === 'string' && typeof result.shortDescription === 'string' && typeof result.longDescription === 'string' && Array.isArray(result.categoryIds) && Array.isArray(result.attributeIds)) {
       const validCategoryIds = result.categoryIds.filter((id: unknown) => 
         typeof id === 'number' && CATEGORIES.some(c => c.id === id)
       );
@@ -170,6 +185,8 @@ Now, analyze the product and return the complete JSON object.
           categoryIds: validCategoryIds,
           attributeIds: validAttributeIds,
           productName: result.productName,
+          titleTag: result.titleTag,
+          metaDescription: result.metaDescription,
           suggestedTags: result.suggestedTags,
           shortDescription: result.shortDescription,
           longDescription: result.longDescription,
