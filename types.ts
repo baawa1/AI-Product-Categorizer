@@ -1,4 +1,3 @@
-
 export interface Category {
   id: number;
   name: string;
@@ -45,6 +44,8 @@ export interface SavedProduct {
     brandId: number | null;
     model: string;
     isReviewed?: boolean;
+    originalId?: string;
+    originalName?: string;
     // Variant-specific fields
     variantSku?: string;
     variantColor?: string;
@@ -52,7 +53,7 @@ export interface SavedProduct {
     variantOther?: string;
 }
 
-// Types for Bulk Import Feature
+// Types for Bulk Create Feature
 export interface CsvProduct {
     sku: string;
     productType: 'watch' | 'glasses' | '';
@@ -63,9 +64,20 @@ export interface CsvProduct {
     imageUrl: string;
 }
 
+// Types for Bulk Enrich Feature
+export interface EnrichmentCsvProduct {
+    id: string;
+    sku: string;
+    name: string;
+    productType: 'watch' | 'glasses' | '';
+    brandName: string;
+    price: string;
+    imageUrl: string;
+}
+
 export interface BulkProduct {
     id: number; // For stable keys in React
-    source: CsvProduct;
+    source: CsvProduct | EnrichmentCsvProduct;
     status: 'pending' | 'processing' | 'completed' | 'error';
     isReviewed: boolean;
     error?: string;

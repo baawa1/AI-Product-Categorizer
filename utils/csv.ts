@@ -1,5 +1,4 @@
-
-import type { SavedProduct, Category, Brand, Attribute, CsvProduct } from '../types';
+import type { SavedProduct, Category, Brand, Attribute, CsvProduct, EnrichmentCsvProduct } from '../types';
 
 export const generateCsvContent = (products: SavedProduct[], allCategories: Category[], allBrands: Brand[], allAttributes: Attribute[]): string => {
     if (products.length === 0) return '';
@@ -8,7 +7,11 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
     const brandMap = new Map<number, string>(allBrands.map(brand => [brand.id, brand.name]));
     const attributeMap = new Map<number, string>(allAttributes.map(attr => [attr.id, attr.name]));
 
-    const headers = ['SKU', 'Product Name', 'Title Tag', 'Meta Description', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
+    const hasEnrichmentData = products.some(p => p.originalId || p.originalName);
+
+    const baseHeaders = ['SKU', 'Product Name', 'Title Tag', 'Meta Description', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
+    const enrichmentHeaders = ['Original ID', 'Original Name'];
+    const headers = hasEnrichmentData ? [...enrichmentHeaders, ...baseHeaders] : baseHeaders;
     
     const rows = products.map(product => {
         const categoryNames = product.categoryIds.map(id => categoryMap.get(id) || '').join('; ');
@@ -21,7 +24,7 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
             return str;
         };
         
-        return [
+        const baseRow = [
             escapeCsvField(product.sku), escapeCsvField(product.productName), escapeCsvField(product.titleTag), escapeCsvField(product.metaDescription), escapeCsvField(product.shortDescription),
             escapeCsvField(product.longDescription), escapeCsvField(product.productType), escapeCsvField(product.brandId),
             escapeCsvField(brandName), escapeCsvField(product.model), escapeCsvField(product.price),
@@ -29,7 +32,14 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
             escapeCsvField(categoryNames), escapeCsvField(product.attributeIds.join('; ')), escapeCsvField(attributeNames),
             escapeCsvField(product.variantSku), escapeCsvField(product.variantColor), escapeCsvField(product.variantSize),
             escapeCsvField(product.variantOther), escapeCsvField(product.isReviewed ? 'TRUE' : 'FALSE')
-        ].join(',');
+        ];
+
+        if (hasEnrichmentData) {
+            const enrichmentRow = [escapeCsvField(product.originalId), escapeCsvField(product.originalName)];
+            return [...enrichmentRow, ...baseRow].join(',');
+        }
+
+        return baseRow.join(',');
     });
 
     return [headers.join(','), ...rows].join('\n');
@@ -161,6 +171,76 @@ export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
 export const generateTemplateCsvUrl = (): string => {
     const headers = Object.values(CSV_HEADERS).join(',');
     const exampleRow = 'WATCH-001,watch,Rolex,Submariner,500000,"Automatic movement with date display.","https://example.com/watch.jpg"';
+    const csvContent = `${headers}\n${exampleRow}`;
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    return URL.createObjectURL(blob);
+};
+
+// --- New functions for Enrichment ---
+
+const ENRICHMENT_CSV_HEADERS = {
+    ID: 'id',
+    SKU: 'sku',
+    NAME: 'name',
+    TYPE: 'type',
+    BRAND: 'brand',
+    PRICE: 'price',
+    IMAGE_URL: 'imageurl',
+};
+
+export const parseEnrichmentCsv = (content: string, brands: Brand[]): EnrichmentCsvProduct[] => {
+    const rawLines = content.trim().split(/\r\n|\n/);
+    if (rawLines.length < 2) throw new Error("CSV file must have a header row and at least one data row.");
+
+    const separator = detectSeparator(rawLines[0]);
+    const header = rawLines[0].split(separator).map(h => h.trim().toLowerCase());
+    const lines = rawLines.slice(1).filter(line => line.trim() !== '');
+
+    const requiredHeaders = Object.values(ENRICHMENT_CSV_HEADERS);
+    const missingHeaders = requiredHeaders.filter(rh => !header.includes(rh));
+    if (missingHeaders.length > 0) {
+        throw new Error(`CSV is missing required headers for enrichment: ${missingHeaders.join(', ')}`);
+    }
+
+    const brandMap = new Map<string, number>(brands.map(b => [b.name.toLowerCase(), b.id]));
+
+    return lines.map((line, index) => {
+        const values = line.split(separator);
+        const row: any = {};
+        header.forEach((h, i) => { if(values[i]) row[h] = values[i].trim().replace(/^"|"$/g, ''); });
+
+        const product: Partial<EnrichmentCsvProduct> = {
+            id: row[ENRICHMENT_CSV_HEADERS.ID],
+            sku: row[ENRICHMENT_CSV_HEADERS.SKU],
+            name: row[ENRICHMENT_CSV_HEADERS.NAME],
+            productType: row[ENRICHMENT_CSV_HEADERS.TYPE]?.toLowerCase(),
+            brandName: row[ENRICHMENT_CSV_HEADERS.BRAND],
+            price: row[ENRICHMENT_CSV_HEADERS.PRICE] || '',
+            imageUrl: row[ENRICHMENT_CSV_HEADERS.IMAGE_URL]
+        };
+
+        // Validation
+        if (!product.id) throw new Error(`Row ${index + 2}: ID is missing.`);
+        if (!product.sku) throw new Error(`Row ${index + 2}: SKU is missing.`);
+        if (!product.name) throw new Error(`Row ${index + 2}: Name is missing.`);
+        if (!product.productType || !['watch', 'glasses'].includes(product.productType)) throw new Error(`Row ${index + 2}: Type must be 'watch' or 'glasses'.`);
+        if (!product.brandName) throw new Error(`Row ${index + 2}: Brand is missing.`);
+        if (!brandMap.has(product.brandName.toLowerCase())) throw new Error(`Row ${index + 2}: Brand "${product.brandName}" not found in the brand list.`);
+        if (!product.imageUrl) throw new Error(`Row ${index + 2}: Image URL is missing.`);
+
+        try {
+            new URL(product.imageUrl);
+        } catch { 
+            throw new Error(`Row ${index + 2}: Invalid Image URL: ${product.imageUrl}`); 
+        }
+
+        return product as EnrichmentCsvProduct;
+    });
+};
+
+export const generateEnrichmentTemplateCsvUrl = (): string => {
+    const headers = Object.values(ENRICHMENT_CSV_HEADERS).join(',');
+    const exampleRow = '123,WATCH-001,"Rolex Submariner",watch,Rolex,500000,"https://example.com/watch.jpg"';
     const csvContent = `${headers}\n${exampleRow}`;
     const blob = new Blob([csvContent], { type: 'text/csv' });
     return URL.createObjectURL(blob);

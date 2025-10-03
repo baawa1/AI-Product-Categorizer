@@ -1,16 +1,18 @@
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { categorizeProduct } from './services/geminiService';
 import { ImageUploader } from './components/ImageUploader';
 import { CategorySelector } from './components/CategorySelector';
 import { AttributeSelector } from './components/AttributeSelector';
 import { SavedProductsModal } from './components/SavedProductsModal';
 import { SearchableSelect } from './components/SearchableSelect';
+import { BulkProcessor } from './components/BulkProcessor';
+import { EnrichmentProcessor } from './components/EnrichmentProcessor';
 import { CATEGORIES, BRANDS, ATTRIBUTES } from './constants';
-import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon, ResetIcon, LoadingSpinner, UploadIcon, LinkIcon } from './components/icons';
+import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon } from './components/icons';
 import { buildCategoryTree } from './utils/categoryTree';
-import type { SavedProduct, Variant, BulkProduct, CsvProduct } from './types';
-import { generateCsvContent, parseCsv, generateTemplateCsvUrl } from './utils/csv';
+import type { SavedProduct, Variant, BulkProduct, CsvProduct, EnrichmentCsvProduct } from './types';
+import { generateCsvContent, parseCsv, parseEnrichmentCsv } from './utils/csv';
 
 const ProductEditor: React.FC<{
     initialData: Partial<SavedProduct & { sku: string; productType: 'watch' | 'glasses'; brandId: number | null, model: string, price: string, userProvidedDetails: string, imageFile: File | null, imageUrl: string | null, imageSource: string | null }>;
@@ -59,7 +61,6 @@ const ProductEditor: React.FC<{
         setIsLoading(true);
         setError(null);
         setAnalysisCompleted(false);
-        // Do not reset fields, user might have pre-filled them
         try {
             const { categoryIds, attributeIds, productName, titleTag, metaDescription, suggestedTags, shortDescription, longDescription } = await categorizeProduct(
                 imageFile,
@@ -67,7 +68,8 @@ const ProductEditor: React.FC<{
                 selectedBrandId ? parseInt(selectedBrandId, 10) : null,
                 model || undefined,
                 price || undefined,
-                userProvidedDetails || undefined
+                userProvidedDetails || undefined,
+                initialData.originalName // Pass original name if it exists (for editing enriched products)
             );
             setSelectedCategories(new Set(categoryIds));
             setSelectedAttributes(new Set(attributeIds));
@@ -162,6 +164,8 @@ const ProductEditor: React.FC<{
             attributeIds: Array.from(selectedAttributes),
             brandId: selectedBrandId ? parseInt(selectedBrandId, 10) : null,
             model,
+            originalId: initialData.originalId,
+            originalName: initialData.originalName,
         };
         onSave(productData, variants);
     };
@@ -182,7 +186,7 @@ const ProductEditor: React.FC<{
     const buttonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 1rem', backgroundColor: '#4B5563', color: '#F9FAFB', border: 'none', borderRadius: '0.375rem', fontWeight: 600, cursor: 'pointer', transition: 'background-color 0.2s' };
 
     const isLgScreen = window.matchMedia('(min-width: 1024px)').matches;
-    const isEditing = !!onCancel; // If onCancel is provided, we are in edit mode.
+    const isEditing = !!onCancel; 
     const analysisButtonReady = !!sku && !!selectedProductType && !!selectedBrandId && !!imageFile && !isLoading && !analysisCompleted;
 
     return (
@@ -231,8 +235,8 @@ const ProductEditor: React.FC<{
                    <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem', display: 'flex', flexDirection: 'column', flexGrow: 1, opacity: isLoading ? 0.6 : 1 }}>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1.5rem' }}>3. Review & Adjust</h2>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto', flexGrow: 1, paddingRight: '0.5rem' }}>
-                            {/* Form fields */}
-                            <div><label htmlFor="productName" style={labelStyle}>Product Name</label><input id="productName" type="text" placeholder={isLoading ? "Generating..." : ""} value={productName} onChange={e => setProductName(e.target.value)} disabled={isLoading} style={inputStyle} /></div>
+                            {initialData.originalName && <div><label style={{...labelStyle, color: '#9CA3AF'}}>Original Name</label><input type="text" value={initialData.originalName} disabled style={{...inputStyle, backgroundColor: '#1F2937'}} /></div>}
+                            <div><label htmlFor="productName" style={labelStyle}>{initialData.originalName ? 'Refined Product Name' : 'Product Name'}</label><input id="productName" type="text" placeholder={isLoading ? "Generating..." : ""} value={productName} onChange={e => setProductName(e.target.value)} disabled={isLoading} style={inputStyle} /></div>
                             <div><label htmlFor="titleTag" style={labelStyle}>SEO Title Tag</label><input id="titleTag" type="text" placeholder={isLoading ? "Generating..." : ""} value={titleTag} onChange={e => setTitleTag(e.target.value)} disabled={isLoading} style={inputStyle} /></div>
                             <div><label htmlFor="metaDescription" style={labelStyle}>SEO Meta Description</label><textarea id="metaDescription" placeholder={isLoading ? "Generating..." : ""} value={metaDescription} onChange={e => setMetaDescription(e.target.value)} disabled={isLoading} rows={3} style={{...inputStyle, resize: 'vertical'}} /></div>
                             <div><label htmlFor="suggestedTags" style={labelStyle}>Suggested Tags</label><textarea id="suggestedTags" placeholder={isLoading ? "Generating..." : ""} value={suggestedTags} onChange={e => setSuggestedTags(e.target.value)} disabled={isLoading} rows={2} style={{...inputStyle, resize: 'vertical'}} /></div>
@@ -245,7 +249,6 @@ const ProductEditor: React.FC<{
                                 </div>
                             )}
                         </div>
-                        {/* Variants & Save Button */}
                          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #374151' }}>
                              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>4. Product Variants</h2>
                              {variants.map((variant, index) => (
@@ -282,170 +285,23 @@ const ProductEditor: React.FC<{
     );
 };
 
-const BulkProcessor: React.FC<{
-    onProcess: (products: CsvProduct[]) => void;
-    processingProducts: BulkProduct[];
-    isProcessing: boolean;
-    onEdit: (index: number) => void;
-    onDownload: () => void;
-    onReset: () => void;
-    onToggleReviewed: (index: number) => void;
-}> = ({ onProcess, processingProducts, isProcessing, onEdit, onDownload, onReset, onToggleReviewed }) => {
-    const [csvFile, setCsvFile] = useState<File | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const dropzoneRef = useRef<HTMLDivElement>(null);
-
-    const handleFileChange = (files: FileList | null) => {
-        setError(null);
-        if (files && files[0]) {
-            if (files[0].type === 'text/csv' || files[0].name.endsWith('.csv')) {
-                setCsvFile(files[0]);
-            } else {
-                setError('Invalid file type. Please upload a CSV file.');
-            }
-        }
-    };
-    
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropzoneRef.current?.classList.remove('drag-over');
-        handleFileChange(e.dataTransfer.files);
-    };
-
-    const handleProcess = async () => {
-        if (!csvFile) return;
-        try {
-            const content = await csvFile.text();
-            const products = parseCsv(content, BRANDS);
-            onProcess(products);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to parse CSV.');
-        }
-    };
-
-    const allDone = !isProcessing && processingProducts.length > 0;
-    const progress = processingProducts.filter(p => p.status === 'completed' || p.status === 'error').length;
-    const total = processingProducts.length;
-
-    const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse' };
-    const thStyle: React.CSSProperties = { textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #4B5563', backgroundColor: '#374151' };
-    const tdStyle: React.CSSProperties = { padding: '0.75rem', borderBottom: '1px solid #374151', verticalAlign: 'middle' };
-
-    if (isProcessing || allDone) {
-        return (
-            <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <h2 style={{ margin: 0 }}>{allDone ? 'Processing Complete' : 'Processing Bulk Import...'}</h2>
-                        <p style={{ margin: '0.25rem 0 0', color: '#9CA3AF' }}>{progress} of {total} products processed.</p>
-                    </div>
-                    {allDone && (
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button onClick={onReset} style={{display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 1rem', backgroundColor: '#4B5563', color: '#F9FAFB', border: 'none', borderRadius: '0.375rem', fontWeight: 600, cursor: 'pointer'}}>
-                                <ResetIcon /> <span style={{marginLeft: '0.5rem'}}>Start New Bulk Import</span>
-                            </button>
-                             <button onClick={onDownload} style={{display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 1rem', backgroundColor: '#16A34A', color: '#F9FAFB', border: 'none', borderRadius: '0.375rem', fontWeight: 600, cursor: 'pointer'}}>
-                                Download Results (CSV)
-                            </button>
-                        </div>
-                    )}
-                </div>
-                {total > 0 && <div style={{ width: '100%', backgroundColor: '#374151', borderRadius: '99px' }}><div style={{ width: `${(progress / total) * 100}%`, height: '8px', backgroundColor: '#4F46E5', borderRadius: '99px', transition: 'width 0.3s' }}></div></div>}
-                <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                    <table style={tableStyle}>
-                        <thead>
-                            <tr>
-                                <th style={thStyle}>SKU</th>
-                                <th style={{...thStyle, width: '70px'}}>Image</th>
-                                <th style={thStyle}>{allDone ? 'Generated Name' : 'Status'}</th>
-                                {allDone && <th style={{...thStyle, textAlign: 'center', width: '100px'}}>Reviewed</th>}
-                                {allDone && <th style={{...thStyle, width: '100px'}}>Actions</th>}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {processingProducts.map((p, index) => (
-                                <tr key={p.id}>
-                                    <td style={tdStyle}>{p.source.sku}</td>
-                                    <td style={tdStyle}><img src={p.imageFile ? URL.createObjectURL(p.imageFile) : p.source.imageUrl} alt={p.source.sku} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '0.25rem' }} /></td>
-                                    <td style={{...tdStyle, maxWidth: '400px', whiteSpace: 'normal'}}>
-                                        {p.status === 'pending' && 'Queued...'}
-                                        {p.status === 'processing' && <span style={{ display: 'flex', alignItems: 'center' }}><LoadingSpinner/> <span style={{marginLeft: '0.5rem'}}>Processing...</span></span>}
-                                        {p.status === 'error' && <span style={{ color: '#F87171' }} title={p.error}>Error</span>}
-                                        {p.status === 'completed' && (p.result?.productName || <span style={{color: '#9CA3AF'}}>No name generated</span>)}
-                                    </td>
-                                     {allDone && (
-                                        <td style={{...tdStyle, textAlign: 'center'}}>
-                                            {p.status === 'completed' && (
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!p.isReviewed}
-                                                    onChange={() => onToggleReviewed(index)}
-                                                    style={{ width: '1.1rem', height: '1.1rem', cursor: 'pointer', accentColor: '#4F46E5' }}
-                                                    aria-label={`Mark ${p.source.sku} as reviewed`}
-                                                />
-                                            )}
-                                        </td>
-                                    )}
-                                    {allDone && (
-                                        <td style={tdStyle}>
-                                            {p.status === 'completed' && <button onClick={() => onEdit(index)} style={{padding: '0.25rem 0.5rem', backgroundColor: '#374151', color: '#F9FAFB', border: '1px solid #4B5563', borderRadius: '0.25rem', cursor: 'pointer'}}>Edit</button>}
-                                        </td>
-                                    )}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        )
-    }
-
-    return (
-        <div style={{ backgroundColor: '#1F2937', padding: '2rem', borderRadius: '0.75rem', textAlign: 'center' }}>
-            <h2 style={{ marginTop: 0 }}>Bulk Import Products</h2>
-            <p style={{ color: '#9CA3AF' }}>Upload a CSV file with your product information to process them in a batch.</p>
-            <div
-                ref={dropzoneRef}
-                onDrop={handleDrop}
-                onDragOver={e => { e.preventDefault(); e.stopPropagation(); dropzoneRef.current?.classList.add('drag-over'); }}
-                onDragLeave={e => { e.preventDefault(); e.stopPropagation(); dropzoneRef.current?.classList.remove('drag-over'); }}
-                onClick={() => document.getElementById('csv-input')?.click()}
-                style={{ border: '2px dashed #4B5563', padding: '2rem', borderRadius: '0.5rem', cursor: 'pointer', marginBottom: '1rem' }}
-            >
-                <UploadIcon />
-                <p>{csvFile ? `Selected: ${csvFile.name}` : 'Drag & drop a CSV file here, or click to select.'}</p>
-            </div>
-            <input type="file" id="csv-input" accept=".csv" onChange={e => handleFileChange(e.target.files)} style={{ display: 'none' }} />
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                <a href={generateTemplateCsvUrl()} download="template.csv" style={{display: 'inline-flex', alignItems: 'center', textDecoration: 'none', padding: '0.5rem 1rem', backgroundColor: '#374151', color: '#F9FAFB', border: 'none', borderRadius: '0.375rem', fontWeight: 600}}>
-                    <FileTextIcon /> <span style={{marginLeft: '0.5rem'}}>Download Template</span>
-                </a>
-                <button onClick={handleProcess} disabled={!csvFile} style={{display: 'inline-flex', alignItems: 'center', padding: '0.5rem 1rem', backgroundColor: '#4F46E5', color: '#F9FAFB', border: 'none', borderRadius: '0.375rem', fontWeight: 600, cursor: 'pointer', opacity: !csvFile ? 0.6 : 1 }}>
-                    <SparklesIcon /> <span style={{marginLeft: '0.5rem'}}>Start Processing</span>
-                </button>
-            </div>
-            {error && <p style={{ color: '#F87171', marginTop: '1rem' }}>{error}</p>}
-        </div>
-    );
-}
-
 const App: React.FC = () => {
-    const [appMode, setAppMode] = useState<'single' | 'bulk'>('single');
+    const [appMode, setAppMode] = useState<'single' | 'bulk-create' | 'bulk-enrich'>('single');
     const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
     
-    // Bulk mode state
-    const [bulkProducts, setBulkProducts] = useState<BulkProduct[]>([]);
-    const [isBulkProcessing, setIsBulkProcessing] = useState<boolean>(false);
-    const [currentlyEditingIndex, setCurrentlyEditingIndex] = useState<number | null>(null);
+    // Bulk Create state
+    const [bulkCreateProducts, setBulkCreateProducts] = useState<BulkProduct[]>([]);
+    const [isBulkCreateProcessing, setIsBulkCreateProcessing] = useState<boolean>(false);
+    const [currentlyEditingBulkCreateIndex, setCurrentlyEditingBulkCreateIndex] = useState<number | null>(null);
 
-    // Load saved products (for single mode) from local storage
+    // Bulk Enrich state
+    const [bulkEnrichProducts, setBulkEnrichProducts] = useState<BulkProduct[]>([]);
+    const [isBulkEnrichProcessing, setIsBulkEnrichProcessing] = useState<boolean>(false);
+    const [currentlyEditingBulkEnrichIndex, setCurrentlyEditingBulkEnrichIndex] = useState<number | null>(null);
+
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem('savedProducts');
-            if (stored) setSavedProducts(JSON.parse(stored));
-        } catch (e) { console.error(e); }
+        try { const stored = localStorage.getItem('savedProducts'); if (stored) setSavedProducts(JSON.parse(stored)); } catch (e) { console.error(e); }
     }, []);
 
     const handleSaveSingleProduct = (product: SavedProduct, variants: Variant[]) => {
@@ -458,138 +314,174 @@ const App: React.FC = () => {
         const updated = [...savedProducts, ...productsToSave];
         setSavedProducts(updated);
         localStorage.setItem('savedProducts', JSON.stringify(updated));
-        // Reset by changing key, which remounts the component
         setAppMode('single'); 
     };
 
-    const handleBulkProcess = async (csvProducts: CsvProduct[]) => {
-        setBulkProducts(csvProducts.map((p, i) => ({ id: i, source: p, status: 'pending', isReviewed: false })));
-        setIsBulkProcessing(true);
+    // --- Bulk Create Logic ---
+    const handleBulkCreateProcess = async (file: File) => {
+        try {
+            const content = await file.text();
+            const products = parseCsv(content, BRANDS);
+            setBulkCreateProducts(products.map((p, i) => ({ id: i, source: p, status: 'pending', isReviewed: false })));
+            setIsBulkCreateProcessing(true);
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Failed to parse CSV.');
+        }
     };
-
+    
     useEffect(() => {
-        if (!isBulkProcessing) return;
-
+        if (!isBulkCreateProcessing) return;
         const processQueue = async () => {
-            for (let i = 0; i < bulkProducts.length; i++) {
-                if (bulkProducts[i].status === 'pending') {
-                    setBulkProducts(prev => {
+            for (let i = 0; i < bulkCreateProducts.length; i++) {
+                if (bulkCreateProducts[i].status !== 'pending') continue;
+                setBulkCreateProducts(prev => { const next = [...prev]; next[i].status = 'processing'; return next; });
+                try {
+                    const source = bulkCreateProducts[i].source as CsvProduct;
+                    const response = await fetch(source.imageUrl);
+                    if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+                    const blob = await response.blob();
+                    const file = new File([blob], "image.jpg", { type: blob.type });
+                    setBulkCreateProducts(prev => { const next = [...prev]; next[i].imageFile = file; return next; });
+                    const { id: brandId } = BRANDS.find(b => b.name.toLowerCase() === source.brandName.toLowerCase()) || {id: null};
+                    const resultData = await categorizeProduct(file, source.productType as 'watch' | 'glasses', brandId, source.model, source.price, source.userProvidedDetails);
+                    setBulkCreateProducts(prev => {
                         const next = [...prev];
-                        next[i].status = 'processing';
+                        next[i].status = 'completed';
+                        next[i].result = { sku: source.sku, productType: source.productType as 'watch'|'glasses', brandId, model: source.model, price: source.price, imageSource: source.imageUrl, isReviewed: prev[i].isReviewed, ...resultData };
                         return next;
                     });
-                    
-                    try {
-                        // 1. Fetch Image
-                        const response = await fetch(bulkProducts[i].source.imageUrl);
-                        if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
-                        const blob = await response.blob();
-                        const file = new File([blob], "image.jpg", { type: blob.type });
-
-                        setBulkProducts(prev => {
-                            const next = [...prev];
-                            next[i].imageFile = file;
-                            return next;
-                        });
-
-                        // 2. Call Gemini
-                        const { id: brandId } = BRANDS.find(b => b.name.toLowerCase() === bulkProducts[i].source.brandName.toLowerCase()) || {id: null};
-                        const resultData = await categorizeProduct(
-                            file,
-                            bulkProducts[i].source.productType as 'watch' | 'glasses',
-                            brandId,
-                            bulkProducts[i].source.model,
-                            bulkProducts[i].source.price,
-                            bulkProducts[i].source.userProvidedDetails
-                        );
-                        
-                        // 3. Update state with result
-                        setBulkProducts(prev => {
-                            const next = [...prev];
-                            next[i].status = 'completed';
-                            next[i].result = {
-                                sku: prev[i].source.sku,
-                                productType: prev[i].source.productType as 'watch'|'glasses',
-                                brandId: brandId,
-                                model: prev[i].source.model,
-                                price: prev[i].source.price,
-                                imageSource: prev[i].source.imageUrl,
-                                isReviewed: prev[i].isReviewed, // Carry over reviewed status
-                                ...resultData
-                            };
-                            return next;
-                        });
-                    } catch (e) {
-                        console.error(`Failed processing SKU ${bulkProducts[i].source.sku}:`, e);
-                        setBulkProducts(prev => {
-                            const next = [...prev];
-                            next[i].status = 'error';
-                            next[i].error = e instanceof Error ? e.message : String(e);
-                            return next;
-                        });
-                    }
+                } catch (e) {
+                    setBulkCreateProducts(prev => { const next = [...prev]; next[i].status = 'error'; next[i].error = e instanceof Error ? e.message : String(e); return next; });
                 }
             }
-            setIsBulkProcessing(false); // All done
+            setIsBulkCreateProcessing(false);
         };
-
         processQueue();
-    // This effect should only run once when isBulkProcessing becomes true.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isBulkProcessing]);
-    
-    const handleToggleReviewed = (index: number) => {
-        setBulkProducts(prev => {
+    }, [isBulkCreateProcessing]);
+
+    const handleToggleBulkCreateReviewed = (index: number) => {
+        setBulkCreateProducts(prev => {
             const next = [...prev];
             const product = next[index];
             product.isReviewed = !product.isReviewed;
-            if (product.result) {
-                product.result.isReviewed = product.isReviewed;
-            }
+            if (product.result) product.result.isReviewed = product.isReviewed;
             return next;
         });
     };
     
-    const handleUpdateBulkProduct = (updatedProduct: SavedProduct) => {
-        if (currentlyEditingIndex === null) return;
-        setBulkProducts(prev => {
+    const handleUpdateBulkCreateProduct = (updatedProduct: SavedProduct) => {
+        if (currentlyEditingBulkCreateIndex === null) return;
+        setBulkCreateProducts(prev => {
             const next = [...prev];
-            const productToUpdate = next[currentlyEditingIndex];
-            
-            // Set reviewed status to true on both the parent object and the result object
+            const productToUpdate = next[currentlyEditingBulkCreateIndex];
             productToUpdate.isReviewed = true;
-            productToUpdate.result = {
-                ...updatedProduct,
-                isReviewed: true,
-            };
-            
+            productToUpdate.result = { ...updatedProduct, isReviewed: true };
             return next;
         });
-        setCurrentlyEditingIndex(null);
+        setCurrentlyEditingBulkCreateIndex(null);
     };
     
-    const handleDownloadBulkCsv = () => {
-        const productsToSave = bulkProducts
-            .filter(p => p.status === 'completed' && p.result)
-            .map(p => p.result!);
-        const csvContent = generateCsvContent(productsToSave, CATEGORIES, BRANDS, ATTRIBUTES);
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const handleDownloadBulkCreateCsv = () => {
+        const products = bulkCreateProducts.filter(p => p.status === 'completed' && p.result).map(p => p.result!);
+        const csv = generateCsvContent(products, CATEGORIES, BRANDS, ATTRIBUTES);
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `bulk_products_${new Date().toISOString().split('T')[0]}.csv`;
+        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        link.download = `bulk-create-results_${new Date().toISOString().split('T')[0]}.csv`;
         link.click();
-        URL.revokeObjectURL(link.href);
+    };
+
+    // --- Bulk Enrich Logic ---
+    const handleBulkEnrichProcess = async (file: File) => {
+        try {
+            const content = await file.text();
+            const products = parseEnrichmentCsv(content, BRANDS);
+            setBulkEnrichProducts(products.map((p, i) => ({ id: i, source: p, status: 'pending', isReviewed: false })));
+            setIsBulkEnrichProcessing(true);
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Failed to parse CSV.');
+        }
+    };
+    
+    useEffect(() => {
+        if (!isBulkEnrichProcessing) return;
+        const processQueue = async () => {
+            for (let i = 0; i < bulkEnrichProducts.length; i++) {
+                if (bulkEnrichProducts[i].status !== 'pending') continue;
+                setBulkEnrichProducts(prev => { const next = [...prev]; next[i].status = 'processing'; return next; });
+                try {
+                    const source = bulkEnrichProducts[i].source as EnrichmentCsvProduct;
+                    const response = await fetch(source.imageUrl);
+                    if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+                    const blob = await response.blob();
+                    const file = new File([blob], "image.jpg", { type: blob.type });
+                    setBulkEnrichProducts(prev => { const next = [...prev]; next[i].imageFile = file; return next; });
+                    const { id: brandId } = BRANDS.find(b => b.name.toLowerCase() === source.brandName.toLowerCase()) || {id: null};
+                    const resultData = await categorizeProduct(file, source.productType as 'watch' | 'glasses', brandId, undefined, source.price, undefined, source.name);
+                    setBulkEnrichProducts(prev => {
+                        const next = [...prev];
+                        next[i].status = 'completed';
+                        next[i].result = { sku: source.sku, productType: source.productType as 'watch'|'glasses', brandId, model: '', price: source.price, imageSource: source.imageUrl, isReviewed: prev[i].isReviewed, originalId: source.id, originalName: source.name, ...resultData };
+                        return next;
+                    });
+                } catch (e) {
+                    setBulkEnrichProducts(prev => { const next = [...prev]; next[i].status = 'error'; next[i].error = e instanceof Error ? e.message : String(e); return next; });
+                }
+            }
+            setIsBulkEnrichProcessing(false);
+        };
+        processQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isBulkEnrichProcessing]);
+    
+    const handleToggleBulkEnrichReviewed = (index: number) => {
+        setBulkEnrichProducts(prev => {
+            const next = [...prev];
+            const product = next[index];
+            product.isReviewed = !product.isReviewed;
+            if (product.result) product.result.isReviewed = product.isReviewed;
+            return next;
+        });
+    };
+    
+    const handleUpdateBulkEnrichProduct = (updatedProduct: SavedProduct) => {
+        if (currentlyEditingBulkEnrichIndex === null) return;
+        setBulkEnrichProducts(prev => {
+            const next = [...prev];
+            const productToUpdate = next[currentlyEditingBulkEnrichIndex];
+            productToUpdate.isReviewed = true;
+            productToUpdate.result = { ...updatedProduct, isReviewed: true };
+            return next;
+        });
+        setCurrentlyEditingBulkEnrichIndex(null);
+    };
+
+    const handleDownloadBulkEnrichCsv = () => {
+        const products = bulkEnrichProducts.filter(p => p.status === 'completed' && p.result).map(p => p.result!);
+        const csv = generateCsvContent(products, CATEGORIES, BRANDS, ATTRIBUTES);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        link.download = `bulk-enrich-results_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
     };
 
     const handleClearAllData = useCallback(() => {
-        if (window.confirm('Are you sure you want to delete all saved products?')) {
+        if (window.confirm('Are you sure you want to delete all saved products from this session?')) {
             localStorage.removeItem('savedProducts');
             setSavedProducts([]);
             setIsModalOpen(false);
         }
     }, []);
+    
+    const currentlyEditingProduct = currentlyEditingBulkCreateIndex !== null ? bulkCreateProducts[currentlyEditingBulkCreateIndex] : (currentlyEditingBulkEnrichIndex !== null ? bulkEnrichProducts[currentlyEditingBulkEnrichIndex] : null);
+    const inEditMode = currentlyEditingBulkCreateIndex !== null || currentlyEditingBulkEnrichIndex !== null;
 
-    const editingProduct = currentlyEditingIndex !== null ? bulkProducts[currentlyEditingIndex] : null;
+    const getAppSubtitle = () => {
+        if (inEditMode) return `Editing Product: ${currentlyEditingProduct?.source.sku}`;
+        if (appMode === 'bulk-create') return 'Process a batch of new products from a CSV file.';
+        if (appMode === 'bulk-enrich') return 'Enrich existing products with AI-generated content via CSV.';
+        return 'Enter product details to automatically assign categories.';
+    };
 
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#111827', color: '#F9FAFB', padding: '2rem' }}>
@@ -598,7 +490,7 @@ const App: React.FC = () => {
                     <div>
                         <h1 style={{ fontSize: '2.25rem', margin: 0 }}>AI Product Categorizer</h1>
                         <p style={{ marginTop: '0.5rem', fontSize: '1.125rem', color: '#9CA3AF', margin: 0 }}>
-                            {currentlyEditingIndex !== null ? `Editing Product: ${editingProduct?.source.sku}` : (appMode === 'bulk' ? 'Process a batch of products from a CSV file.' : 'Enter product details to automatically assign categories.')}
+                           {getAppSubtitle()}
                         </p>
                     </div>
                      <div style={{display: 'flex', gap: '1rem'}}>
@@ -607,42 +499,59 @@ const App: React.FC = () => {
                                 View Saved ({savedProducts.length})
                             </button>
                         )}
-                        {currentlyEditingIndex === null && (
+                        {!inEditMode && (
                             <div style={{backgroundColor: '#374151', borderRadius: '0.5rem', padding: '0.25rem', display: 'flex'}}>
                                 <button onClick={() => setAppMode('single')} style={{padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem', backgroundColor: appMode === 'single' ? '#4F46E5' : 'transparent', color: '#F9FAFB', cursor: 'pointer'}}>Single Product</button>
-                                <button onClick={() => setAppMode('bulk')} style={{padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem', backgroundColor: appMode === 'bulk' ? '#4F46E5' : 'transparent', color: '#F9FAFB', cursor: 'pointer'}}>Bulk Import</button>
+                                <button onClick={() => setAppMode('bulk-create')} style={{padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem', backgroundColor: appMode === 'bulk-create' ? '#4F46E5' : 'transparent', color: '#F9FAFB', cursor: 'pointer'}}>Bulk Create</button>
+                                <button onClick={() => setAppMode('bulk-enrich')} style={{padding: '0.5rem 1rem', border: 'none', borderRadius: '0.375rem', backgroundColor: appMode === 'bulk-enrich' ? '#4F46E5' : 'transparent', color: '#F9FAFB', cursor: 'pointer'}}>Bulk Enrich</button>
                             </div>
                         )}
                      </div>
                 </header>
 
-                {currentlyEditingIndex !== null && editingProduct?.result ? (
+                {inEditMode && currentlyEditingProduct?.result ? (
                      <ProductEditor
-                        key={editingProduct.id}
+                        key={currentlyEditingProduct.id}
                         initialData={{ 
-                            ...editingProduct.result,
-                            userProvidedDetails: editingProduct.source.userProvidedDetails,
-                            imageFile: editingProduct.imageFile || null,
-                            imageUrl: editingProduct.imageFile ? URL.createObjectURL(editingProduct.imageFile) : editingProduct.source.imageUrl,
+                            ...currentlyEditingProduct.result,
+                            userProvidedDetails: (currentlyEditingProduct.source as CsvProduct).userProvidedDetails,
+                            imageFile: currentlyEditingProduct.imageFile || null,
+                            imageUrl: currentlyEditingProduct.imageFile ? URL.createObjectURL(currentlyEditingProduct.imageFile) : currentlyEditingProduct.source.imageUrl,
                         }}
-                        onSave={(updated) => handleUpdateBulkProduct(updated)}
-                        onCancel={() => setCurrentlyEditingIndex(null)}
+                        onSave={(updated) => {
+                            if (currentlyEditingBulkCreateIndex !== null) handleUpdateBulkCreateProduct(updated);
+                            if (currentlyEditingBulkEnrichIndex !== null) handleUpdateBulkEnrichProduct(updated);
+                        }}
+                        onCancel={() => {
+                            setCurrentlyEditingBulkCreateIndex(null);
+                            setCurrentlyEditingBulkEnrichIndex(null);
+                        }}
                         saveButtonText="Update Product"
                         isSaving={false}
                     />
-                ) : appMode === 'bulk' ? (
+                ) : appMode === 'bulk-create' ? (
                      <BulkProcessor
-                        onProcess={handleBulkProcess}
-                        processingProducts={bulkProducts}
-                        isProcessing={isBulkProcessing}
-                        onEdit={setCurrentlyEditingIndex}
-                        onDownload={handleDownloadBulkCsv}
-                        onReset={() => setBulkProducts([])}
-                        onToggleReviewed={handleToggleReviewed}
+                        onProcess={handleBulkCreateProcess}
+                        processingProducts={bulkCreateProducts}
+                        isProcessing={isBulkCreateProcessing}
+                        onEdit={setCurrentlyEditingBulkCreateIndex}
+                        onDownload={handleDownloadBulkCreateCsv}
+                        onReset={() => setBulkCreateProducts([])}
+                        onToggleReviewed={handleToggleBulkCreateReviewed}
+                    />
+                ) : appMode === 'bulk-enrich' ? (
+                    <EnrichmentProcessor 
+                        onProcess={handleBulkEnrichProcess}
+                        processingProducts={bulkEnrichProducts}
+                        isProcessing={isBulkEnrichProcessing}
+                        onEdit={setCurrentlyEditingBulkEnrichIndex}
+                        onDownload={handleDownloadBulkEnrichCsv}
+                        onReset={() => setBulkEnrichProducts([])}
+                        onToggleReviewed={handleToggleBulkEnrichReviewed}
                     />
                 ) : (
                     <ProductEditor
-                        key={savedProducts.length} // Force re-mount on save
+                        key={savedProducts.length} 
                         initialData={{}}
                         onSave={(product, variants) => handleSaveSingleProduct(product, variants)}
                         saveButtonText="Save Product & Start New"
@@ -657,7 +566,7 @@ const App: React.FC = () => {
                     </a>
                 </footer>
             </div>
-            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={() => { /* Implement if needed for single mode */ }} onClearAll={handleClearAllData} brands={BRANDS} />}
+            {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={() => { /* Not implemented for single mode */ }} onClearAll={handleClearAllData} brands={BRANDS} />}
         </div>
     );
 };
