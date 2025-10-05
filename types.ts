@@ -39,6 +39,7 @@ export interface SavedProduct {
     suggestedTags: string;
     shortDescription: string;
     longDescription: string;
+    primaryCategoryId: number | null;
     categoryIds: number[];
     attributeIds: number[];
     brandId: number | null;
@@ -72,7 +73,7 @@ export interface EnrichmentCsvProduct {
     productType: 'watch' | 'glasses' | '';
     brandName: string;
     price: string;
-    imageUrl: string;
+imageUrl: string;
 }
 
 export interface BulkProduct {

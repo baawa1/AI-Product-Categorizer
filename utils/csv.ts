@@ -9,12 +9,13 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
 
     const hasEnrichmentData = products.some(p => p.originalId || p.originalName);
 
-    const baseHeaders = ['SKU', 'Product Name', 'Title Tag', 'Meta Description', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
+    const baseHeaders = ['SKU', 'Product Name', 'Primary Category ID', 'Primary Category Name', 'Title Tag', 'Meta Description', 'Short Description', 'Long Description', 'Product Type', 'Brand ID', 'Brand Name', 'Model', 'Price', 'Image Source', 'Suggested Tags', 'Category IDs', 'Category Names', 'Attribute IDs', 'Attribute Names', 'Variant SKU', 'Color', 'Size', 'Other Attribute', 'Reviewed'];
     const enrichmentHeaders = ['Original ID', 'Original Name'];
     const headers = hasEnrichmentData ? [...enrichmentHeaders, ...baseHeaders] : baseHeaders;
     
     const rows = products.map(product => {
         const categoryNames = product.categoryIds.map(id => categoryMap.get(id) || '').join('; ');
+        const primaryCategoryName = product.primaryCategoryId ? categoryMap.get(product.primaryCategoryId) || '' : '';
         const attributeNames = product.attributeIds.map(id => attributeMap.get(id) || '').join('; ');
         const brandName = product.brandId ? brandMap.get(product.brandId) || '' : '';
         const escapeCsvField = (field: any) => {
@@ -25,13 +26,30 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
         };
         
         const baseRow = [
-            escapeCsvField(product.sku), escapeCsvField(product.productName), escapeCsvField(product.titleTag), escapeCsvField(product.metaDescription), escapeCsvField(product.shortDescription),
-            escapeCsvField(product.longDescription), escapeCsvField(product.productType), escapeCsvField(product.brandId),
-            escapeCsvField(brandName), escapeCsvField(product.model), escapeCsvField(product.price),
-            escapeCsvField(product.imageSource), escapeCsvField(product.suggestedTags), escapeCsvField(product.categoryIds.join('; ')),
-            escapeCsvField(categoryNames), escapeCsvField(product.attributeIds.join('; ')), escapeCsvField(attributeNames),
-            escapeCsvField(product.variantSku), escapeCsvField(product.variantColor), escapeCsvField(product.variantSize),
-            escapeCsvField(product.variantOther), escapeCsvField(product.isReviewed ? 'TRUE' : 'FALSE')
+            escapeCsvField(product.sku), 
+            escapeCsvField(product.productName),
+            escapeCsvField(product.primaryCategoryId),
+            escapeCsvField(primaryCategoryName),
+            escapeCsvField(product.titleTag), 
+            escapeCsvField(product.metaDescription), 
+            escapeCsvField(product.shortDescription),
+            escapeCsvField(product.longDescription), 
+            escapeCsvField(product.productType), 
+            escapeCsvField(product.brandId),
+            escapeCsvField(brandName), 
+            escapeCsvField(product.model), 
+            escapeCsvField(product.price),
+            escapeCsvField(product.imageSource), 
+            escapeCsvField(product.suggestedTags), 
+            escapeCsvField(product.categoryIds.join('; ')),
+            escapeCsvField(categoryNames), 
+            escapeCsvField(product.attributeIds.join('; ')), 
+            escapeCsvField(attributeNames),
+            escapeCsvField(product.variantSku), 
+            escapeCsvField(product.variantColor), 
+            escapeCsvField(product.variantSize),
+            escapeCsvField(product.variantOther), 
+            escapeCsvField(product.isReviewed ? 'TRUE' : 'FALSE')
         ];
 
         if (hasEnrichmentData) {
@@ -170,8 +188,9 @@ export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
 
 export const generateTemplateCsvUrl = (): string => {
     const headers = Object.values(CSV_HEADERS).join(',');
-    const exampleRow = 'WATCH-001,watch,Rolex,Submariner,500000,"Automatic movement with date display.","https://example.com/watch.jpg"';
-    const csvContent = `${headers}\n${exampleRow}`;
+    const exampleRow1 = 'WATCH-001,watch,Rolex,Submariner,500000,"Automatic movement with date display.","https://example.com/watch.jpg"';
+    const exampleRow2 = 'GLASS-001,glasses,Ray-Ban,Aviator,75000,"Classic aviator sunglasses with polarized lenses.","https://example.com/glasses.jpg"';
+    const csvContent = `${headers}\n${exampleRow1}\n${exampleRow2}`;
     const blob = new Blob([csvContent], { type: 'text/csv' });
     return URL.createObjectURL(blob);
 };
@@ -240,7 +259,7 @@ export const parseEnrichmentCsv = (content: string, brands: Brand[]): Enrichment
 
 export const generateEnrichmentTemplateCsvUrl = (): string => {
     const headers = Object.values(ENRICHMENT_CSV_HEADERS).join(',');
-    const exampleRow = '123,WATCH-001,"Rolex Submariner",watch,Rolex,500000,"https://example.com/watch.jpg"';
+    const exampleRow = '123,WATCH-001,"Rolex Submariner",watch,Rolex,250000,"https://example.com/watch.jpg"';
     const csvContent = `${headers}\n${exampleRow}`;
     const blob = new Blob([csvContent], { type: 'text/csv' });
     return URL.createObjectURL(blob);

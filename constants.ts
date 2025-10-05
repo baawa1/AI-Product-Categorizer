@@ -122,11 +122,17 @@ export const BRANDS: Brand[] = [
     { name: 'Tommy Jeans', id: 4478 },
     { name: 'Balmain', id: 4479 },
     { name: 'Fred', id: 4480 },
+    { name: 'Pandora', id: 4481 },
+    { name: 'Swarovski', id: 4482 },
+    { name: 'Tiffany & Co.', id: 4483 },
 ];
 
 export const CATEGORIES: Category[] = [
+    // Parent Categories
     { id: 4296, name: 'Glasses Nigeria', parent: 0 },
     { id: 4287, name: 'Watches Nigeria', parent: 0 },
+
+    // Watch Categories
     { id: 4542, name: 'Affordable Watches Nigeria', parent: 4287 },
     { id: 4558, name: 'Automatic Watches Nigeria', parent: 4287 },
     { id: 4556, name: 'Black Watches Nigeria', parent: 4287 },
@@ -150,6 +156,7 @@ export const CATEGORIES: Category[] = [
     { id: 4564, name: 'Watches Lagos', parent: 4287 },
     { id: 4521, name: 'Watches Port Harcourt', parent: 4287 },
     { id: 4560, name: 'Waterproof Watches Nigeria', parent: 4287 },
+    { id: 4289, name: "Women's Watches Nigeria", parent: 4287 },
     { id: 4532, name: "Women's Analog Watches Nigeria", parent: 4289 },
     { id: 4539, name: "Women's Business Watches Nigeria", parent: 4289 },
     { id: 4537, name: "Women's Casual Watches Nigeria", parent: 4289 },
@@ -160,7 +167,6 @@ export const CATEGORIES: Category[] = [
     { id: 4535, name: "Women's Leather Watches Nigeria", parent: 4289 },
     { id: 4536, name: "Women's Luxury Watches Nigeria", parent: 4289 },
     { id: 4534, name: "Women's Sport Watches Nigeria", parent: 4289 },
-    { id: 4289, name: "Women's Watches Nigeria", parent: 4287 },
     { id: 4522, name: "Men's Analog Watches Nigeria", parent: 4288 },
     { id: 4529, name: "Men's Business Watches Nigeria", parent: 4288 },
     { id: 4322, name: "Men's Casual Watches Nigeria", parent: 4288 },
@@ -171,6 +177,8 @@ export const CATEGORIES: Category[] = [
     { id: 4525, name: "Men's Leather Watches Nigeria", parent: 4288 },
     { id: 4320, name: "Men's Luxury Watches Nigeria", parent: 4288 },
     { id: 4524, name: "Men's Sport Watches Nigeria", parent: 4288 },
+    
+    // Glasses Categories
     { id: 4596, name: 'Designer Glasses Nigeria', parent: 4296 },
     { id: 4567, name: 'Eyeglasses Nigeria', parent: 4296 },
     { id: 4597, name: 'Fashion Glasses Nigeria', parent: 4296 },
@@ -210,7 +218,7 @@ export const CATEGORIES: Category[] = [
     { id: 4600, name: 'Full Rim Glasses Nigeria', parent: 4567 },
     { id: 4601, name: 'Rimless Glasses Nigeria', parent: 4567 },
     { id: 4602, name: 'Semi Rimless Glasses Nigeria', parent: 4567 },
-    { id: 4599, name: 'TR90 Glasses Nigeria', parent: 4567 }
+    { id: 4599, name: 'TR90 Glasses Nigeria', parent: 4567 },
 ];
 
 
