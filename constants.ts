@@ -1,3 +1,4 @@
+
 import type { Category, Brand, Attribute } from './types';
 
 export const BRANDS: Brand[] = [
@@ -125,6 +126,16 @@ export const BRANDS: Brand[] = [
     { name: 'Pandora', id: 4481 },
     { name: 'Swarovski', id: 4482 },
     { name: 'Tiffany & Co.', id: 4483 },
+    { name: 'Manomos', id: 4606 },
+    { name: 'Nordlys', id: 4607 },
+    { name: 'Evisu', id: 4608 },
+    { name: 'Puomn', id: 4609 },
+    { name: 'Gentle Monster', id: 4610 },
+    { name: 'Zeeman', id: 4611 },
+    { name: 'Ic! Berlin', id: 4612 },
+    { name: 'Black Forest', id: 4613 },
+    { name: 'Chloé', id: 4614 },
+    { name: 'Red by Red', id: 4615 },
 ];
 
 export const CATEGORIES: Category[] = [

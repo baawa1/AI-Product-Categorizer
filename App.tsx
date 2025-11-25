@@ -323,6 +323,9 @@ const App = () => {
 
     const processBulkFile = async (file: File, type: 'create' | 'enrich') => {
         setIsBulkProcessing(true);
+        // Force a brief delay to allow React to render the processing state before blocking operations
+        await new Promise(resolve => setTimeout(resolve, 50));
+
         try {
             const text = await file.text();
             let newProducts: BulkProduct[] = [];
@@ -346,7 +349,8 @@ const App = () => {
                      }));
                 }
             } catch (parseError: any) {
-                alert(parseError.message);
+                console.error("CSV Parse Error:", parseError);
+                alert(`Error parsing CSV file: ${parseError.message}`);
                 setIsBulkProcessing(false);
                 return;
             }
@@ -458,7 +462,7 @@ const App = () => {
             }
         } catch (e: any) {
             console.error("Bulk process init error", e);
-            alert("An error occurred while reading the file.");
+            alert(`An error occurred while reading the file: ${e.message}`);
         } finally {
             setIsBulkProcessing(false);
         }
