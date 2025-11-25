@@ -83,7 +83,7 @@ export const BRANDS: Brand[] = [
     { name: 'Ariel', id: 4437 },
     { name: 'Benz', id: 4438 },
     { name: 'Binbond', id: 4439 },
-    { name: 'Boss', id: 4440 },
+    { name: 'Hugo Boss', id: 4440 },
     { name: 'Carrera', id: 4441 },
     { name: 'Coss', id: 4442 },
     { name: 'Curren', id: 4443 },

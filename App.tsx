@@ -75,7 +75,6 @@ const ProductEditor: React.FC<{
         setError(null);
         setAnalysisCompleted(false);
         try {
-            // FIX: Complete the `categorizeProduct` call and handle the response.
             const { categoryIds, attributeIds, productName, titleTag, metaDescription, suggestedTags, shortDescription, longDescription, primaryCategoryId } = await categorizeProduct(
                 imageFile,
                 selectedProductType,
@@ -83,7 +82,7 @@ const ProductEditor: React.FC<{
                 model || undefined,
                 price || undefined,
                 userProvidedDetails || undefined,
-                initialData.productName
+                initialData.originalName || initialData.productName
             );
             setSelectedCategories(new Set(categoryIds));
             setSelectedAttributes(new Set(attributeIds));
@@ -203,7 +202,6 @@ const ProductEditor: React.FC<{
     const isStep1Complete = sku && selectedProductType && selectedBrandId;
     const isReadyForAnalysis = isStep1Complete && !!imageFile;
 
-    // FIX: Add a return statement with JSX to the ProductEditor component.
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -270,10 +268,30 @@ const App = () => {
     const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState<'single' | 'bulk-create' | 'bulk-enrich'>('single');
+    
+    // Bulk Processing State
+    const [bulkProducts, setBulkProducts] = useState<BulkProduct[]>([]);
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+    const [editingBulkIndex, setEditingBulkIndex] = useState<number | null>(null);
 
     const handleSaveProduct = (product: SavedProduct, variants: Variant[]) => {
         setSavedProducts(prev => [...prev, product]);
-        // Here you would typically reset the form or give feedback
+        alert("Product saved successfully!");
+    };
+    
+    const handleSaveBulkEditedProduct = (product: SavedProduct) => {
+        if (editingBulkIndex === null) return;
+        
+        setBulkProducts(prev => {
+            const newProducts = [...prev];
+            newProducts[editingBulkIndex] = {
+                ...newProducts[editingBulkIndex],
+                result: product,
+                status: 'completed'
+            };
+            return newProducts;
+        });
+        setEditingBulkIndex(null);
     };
 
     const handleDownloadCsv = () => {
@@ -289,6 +307,199 @@ const App = () => {
             link.click();
             document.body.removeChild(link);
         }
+    };
+    
+    const fetchImageFromUrl = async (url: string): Promise<File> => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to fetch image. Status: ${response.status}`);
+            const blob = await response.blob();
+            return new File([blob], "product-image.jpg", { type: blob.type });
+        } catch (error: any) {
+            // Very common in browsers due to CORS
+            throw new Error(`Image load failed (CORS?): ${error.message}`);
+        }
+    };
+
+    const processBulkFile = async (file: File, type: 'create' | 'enrich') => {
+        setIsBulkProcessing(true);
+        try {
+            const text = await file.text();
+            let newProducts: BulkProduct[] = [];
+
+            try {
+                if (type === 'create') {
+                     const parsed = parseCsv(text, BRANDS);
+                     newProducts = parsed.map((p, i) => ({
+                        id: Date.now() + i,
+                        source: p,
+                        status: 'pending',
+                        isReviewed: false
+                     }));
+                } else {
+                     const parsed = parseEnrichmentCsv(text, BRANDS);
+                     newProducts = parsed.map((p, i) => ({
+                        id: Date.now() + i,
+                        source: p,
+                        status: 'pending',
+                        isReviewed: false
+                     }));
+                }
+            } catch (parseError: any) {
+                alert(parseError.message);
+                setIsBulkProcessing(false);
+                return;
+            }
+
+            setBulkProducts(newProducts);
+
+            // Process sequentially to be gentle on browser/API
+            for (let i = 0; i < newProducts.length; i++) {
+                const currentId = newProducts[i].id;
+                
+                // Update status to processing
+                setBulkProducts(prev => prev.map(p => p.id === currentId ? { ...p, status: 'processing' } : p));
+
+                try {
+                    const productSource = newProducts[i].source;
+                    const url = (productSource as any).imageUrl;
+                    let imageFile = newProducts[i].imageFile;
+                    
+                    if (!imageFile && url) {
+                         imageFile = await fetchImageFromUrl(url);
+                    }
+
+                    if (!imageFile) throw new Error("No image available");
+
+                    // Prepare args for categorizeProduct
+                    let brandId: number | null = null;
+                    const brandName = (productSource as any).brandName;
+                    if (brandName) {
+                        const brand = BRANDS.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+                        if (brand) brandId = brand.id;
+                    }
+
+                    let result;
+                    let savedProduct: SavedProduct;
+
+                    if (type === 'create') {
+                         const p = productSource as CsvProduct;
+                         result = await categorizeProduct(
+                            imageFile,
+                            p.productType as 'watch' | 'glasses',
+                            brandId,
+                            p.model,
+                            p.price,
+                            p.userProvidedDetails,
+                            undefined
+                         );
+                         
+                         savedProduct = {
+                            sku: p.sku,
+                            productType: p.productType as 'watch' | 'glasses',
+                            price: p.price,
+                            imageSource: p.imageUrl,
+                            productName: result.productName,
+                            titleTag: result.titleTag,
+                            metaDescription: result.metaDescription,
+                            suggestedTags: result.suggestedTags,
+                            shortDescription: result.shortDescription,
+                            longDescription: result.longDescription,
+                            primaryCategoryId: result.primaryCategoryId,
+                            categoryIds: result.categoryIds,
+                            attributeIds: result.attributeIds,
+                            brandId: result.brandId,
+                            model: p.model,
+                            isReviewed: false,
+                            imageFile: imageFile
+                         } as any; // Cast to satisfy type system for helper fields
+
+                    } else {
+                         const p = productSource as EnrichmentCsvProduct;
+                         result = await categorizeProduct(
+                            imageFile,
+                            p.productType as 'watch' | 'glasses',
+                            brandId,
+                            undefined,
+                            p.price,
+                            undefined,
+                            p.name 
+                         );
+
+                         savedProduct = {
+                            sku: p.sku,
+                            productType: p.productType as 'watch' | 'glasses',
+                            price: p.price,
+                            imageSource: p.imageUrl,
+                            productName: result.productName,
+                            titleTag: result.titleTag,
+                            metaDescription: result.metaDescription,
+                            suggestedTags: result.suggestedTags,
+                            shortDescription: result.shortDescription,
+                            longDescription: result.longDescription,
+                            primaryCategoryId: result.primaryCategoryId,
+                            categoryIds: result.categoryIds,
+                            attributeIds: result.attributeIds,
+                            brandId: result.brandId,
+                            model: '',
+                            isReviewed: false,
+                            originalId: p.id,
+                            originalName: p.name,
+                            imageFile: imageFile
+                         } as any;
+                    }
+
+                    setBulkProducts(prev => prev.map(p => p.id === currentId ? { ...p, status: 'completed', result: savedProduct, imageFile } : p));
+
+                } catch (e: any) {
+                    console.error(`Error processing product ${currentId}:`, e);
+                    setBulkProducts(prev => prev.map(p => p.id === currentId ? { ...p, status: 'error', error: e.message } : p));
+                }
+            }
+        } catch (e: any) {
+            console.error("Bulk process init error", e);
+            alert("An error occurred while reading the file.");
+        } finally {
+            setIsBulkProcessing(false);
+        }
+    };
+    
+    const handleBulkReset = () => {
+        setBulkProducts([]);
+        setIsBulkProcessing(false);
+        setEditingBulkIndex(null);
+    };
+
+    const handleBulkDownload = () => {
+        const completedProducts = bulkProducts
+            .filter(p => p.status === 'completed' && p.result)
+            .map(p => p.result!);
+            
+        if (completedProducts.length === 0) {
+            alert("No completed products to download.");
+            return;
+        }
+
+        const csvContent = generateCsvContent(completedProducts, CATEGORIES, BRANDS, ATTRIBUTES);
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "bulk_results.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
+
+    const handleBulkToggleReviewed = (index: number) => {
+        setBulkProducts(prev => {
+            const newProducts = [...prev];
+            newProducts[index] = { ...newProducts[index], isReviewed: !newProducts[index].isReviewed };
+            return newProducts;
+        });
     };
     
     const TabButton: React.FC<{ current: typeof mode, target: typeof mode, onClick: (m: typeof mode) => void, children: React.ReactNode }> = ({current, target, onClick, children}) => (
@@ -309,6 +520,42 @@ const App = () => {
             {children}
         </button>
     );
+
+    // Prepare initial data for editing a bulk product
+    const getBulkEditInitialData = () => {
+        if (editingBulkIndex === null) return {};
+        const p = bulkProducts[editingBulkIndex];
+        const src = p.source as any;
+        const res = p.result;
+        
+        // Prefer result data if available, fallback to source data
+        return {
+            sku: res?.sku || src.sku,
+            productType: res?.productType || src.productType,
+            brandId: res?.brandId || (src.brandName ? BRANDS.find(b => b.name.toLowerCase() === src.brandName.toLowerCase())?.id : null),
+            model: res?.model || src.model || '',
+            price: res?.price || src.price,
+            userProvidedDetails: src.userProvidedDetails || '',
+            imageFile: p.imageFile,
+            imageUrl: src.imageUrl,
+            imageSource: src.imageUrl,
+            
+            // Generated fields
+            productName: res?.productName,
+            titleTag: res?.titleTag,
+            metaDescription: res?.metaDescription,
+            suggestedTags: res?.suggestedTags,
+            shortDescription: res?.shortDescription,
+            longDescription: res?.longDescription,
+            primaryCategoryId: res?.primaryCategoryId,
+            categoryIds: res?.categoryIds,
+            attributeIds: res?.attributeIds,
+            
+            // Enrichment specific
+            originalId: res?.originalId || (p.source as EnrichmentCsvProduct).id,
+            originalName: res?.originalName || (p.source as EnrichmentCsvProduct).name
+        };
+    };
 
     return (
         <div style={{ backgroundColor: '#111827', minHeight: '100vh', color: '#F9FAFB', padding: '2rem' }}>
@@ -333,8 +580,46 @@ const App = () => {
                     </div>
 
                     {mode === 'single' && <ProductEditor initialData={{}} onSave={handleSaveProduct} saveButtonText="Save Product" isSaving={false} />}
-                    {mode === 'bulk-create' && <BulkProcessor onProcess={() => {}} processingProducts={[]} isProcessing={false} onEdit={() => {}} onDownload={() => {}} onReset={()=>{}} onToggleReviewed={()=>{}} />}
-                    {mode === 'bulk-enrich' && <EnrichmentProcessor onProcess={() => {}} processingProducts={[]} isProcessing={false} onEdit={() => {}} onDownload={() => {}} onReset={()=>{}} onToggleReviewed={()=>{}} />}
+                    
+                    {mode === 'bulk-create' && editingBulkIndex === null && (
+                        <BulkProcessor 
+                            onProcess={(file) => processBulkFile(file, 'create')} 
+                            processingProducts={bulkProducts} 
+                            isProcessing={isBulkProcessing} 
+                            onEdit={setEditingBulkIndex} 
+                            onDownload={handleBulkDownload} 
+                            onReset={handleBulkReset} 
+                            onToggleReviewed={handleBulkToggleReviewed}
+                        />
+                    )}
+                    
+                    {mode === 'bulk-enrich' && editingBulkIndex === null && (
+                        <EnrichmentProcessor 
+                            onProcess={(file) => processBulkFile(file, 'enrich')} 
+                            processingProducts={bulkProducts} 
+                            isProcessing={isBulkProcessing} 
+                            onEdit={setEditingBulkIndex} 
+                            onDownload={handleBulkDownload} 
+                            onReset={handleBulkReset}
+                            onToggleReviewed={handleBulkToggleReviewed}
+                        />
+                    )}
+                    
+                    {editingBulkIndex !== null && (
+                        <div style={{ animation: 'fadeIn 0.2s ease-in' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Editing: {bulkProducts[editingBulkIndex].result?.sku || (bulkProducts[editingBulkIndex].source as any).sku}</h2>
+                            </div>
+                            <ProductEditor 
+                                initialData={getBulkEditInitialData()} 
+                                onSave={handleSaveBulkEditedProduct} 
+                                onCancel={() => setEditingBulkIndex(null)}
+                                saveButtonText="Update Bulk Product"
+                                isSaving={false}
+                            />
+                        </div>
+                    )}
+
                 </main>
             </div>
             {isModalOpen && <SavedProductsModal products={savedProducts} onClose={() => setIsModalOpen(false)} onDownload={handleDownloadCsv} onClearAll={() => setSavedProducts([])} brands={BRANDS} />}
