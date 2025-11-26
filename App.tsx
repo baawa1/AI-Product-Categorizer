@@ -282,6 +282,9 @@ const App = () => {
     const handleSaveBulkEditedProduct = (product: SavedProduct) => {
         if (editingBulkIndex === null) return;
         
+        // Capture isReviewed state BEFORE updating state to ensure we know if we need to sync to savedProducts
+        const isReviewed = bulkProducts[editingBulkIndex].isReviewed;
+
         setBulkProducts(prev => {
             const newProducts = [...prev];
             newProducts[editingBulkIndex] = {
@@ -291,6 +294,14 @@ const App = () => {
             };
             return newProducts;
         });
+
+        // Sync updates to savedProducts if the item was already reviewed/saved
+        if (isReviewed) {
+             setSavedProducts(prev => 
+                prev.map(p => p.sku === product.sku ? { ...product, isReviewed: true } : p)
+             );
+        }
+
         setEditingBulkIndex(null);
     };
 
@@ -324,7 +335,7 @@ const App = () => {
     const processBulkFile = async (file: File, type: 'create' | 'enrich') => {
         setIsBulkProcessing(true);
         // Force a brief delay to allow React to render the processing state before blocking operations
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
             const text = await file.text();
@@ -355,7 +366,16 @@ const App = () => {
                 return;
             }
 
+            if (newProducts.length === 0) {
+                alert("No valid products found in the CSV file.");
+                setIsBulkProcessing(false);
+                return;
+            }
+
             setBulkProducts(newProducts);
+
+            // Brief delay to allow the list to render in 'pending' state
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Process sequentially to be gentle on browser/API
             for (let i = 0; i < newProducts.length; i++) {
@@ -499,11 +519,27 @@ const App = () => {
     };
 
     const handleBulkToggleReviewed = (index: number) => {
+        const product = bulkProducts[index];
+        if (!product || !product.result) return;
+        
+        const newReviewedState = !product.isReviewed;
+
         setBulkProducts(prev => {
             const newProducts = [...prev];
-            newProducts[index] = { ...newProducts[index], isReviewed: !newProducts[index].isReviewed };
+            newProducts[index] = { ...newProducts[index], isReviewed: newReviewedState };
             return newProducts;
         });
+
+        // Add or remove from Saved Products list automatically
+        if (newReviewedState) {
+             setSavedProducts(prev => {
+                // Prevent duplicates based on SKU
+                if (prev.some(p => p.sku === product.result!.sku)) return prev;
+                return [...prev, { ...product.result!, isReviewed: true }];
+             });
+        } else {
+             setSavedProducts(prev => prev.filter(p => p.sku !== product.result!.sku));
+        }
     };
     
     const TabButton: React.FC<{ current: typeof mode, target: typeof mode, onClick: (m: typeof mode) => void, children: React.ReactNode }> = ({current, target, onClick, children}) => (
