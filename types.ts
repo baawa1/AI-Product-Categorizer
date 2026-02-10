@@ -1,3 +1,4 @@
+
 export interface Category {
   id: number;
   name: string;
@@ -21,10 +22,11 @@ export interface CategoryNode extends Category {
 }
 
 export interface Variant {
-    id: number;
+    id: string;
     sku: string;
     color: string;
     size: string;
+    price: string;
     other: string;
 }
 
@@ -47,11 +49,7 @@ export interface SavedProduct {
     isReviewed?: boolean;
     originalId?: string;
     originalName?: string;
-    // Variant-specific fields
-    variantSku?: string;
-    variantColor?: string;
-    variantSize?: string;
-    variantOther?: string;
+    variants: Variant[];
 }
 
 // Types for Bulk Create Feature
@@ -63,6 +61,7 @@ export interface CsvProduct {
     price: string;
     userProvidedDetails: string;
     imageUrl: string;
+    variantColors?: string;
 }
 
 // Types for Bulk Enrich Feature
@@ -73,7 +72,8 @@ export interface EnrichmentCsvProduct {
     productType: 'watch' | 'glasses' | '';
     brandName: string;
     price: string;
-imageUrl: string;
+    imageUrl: string;
+    variantColors?: string;
 }
 
 export interface BulkProduct {

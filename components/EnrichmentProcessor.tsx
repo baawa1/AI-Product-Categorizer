@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { generateEnrichmentTemplateCsvUrl } from '../utils/csv';
 import { SparklesIcon, FileTextIcon, ResetIcon, LoadingSpinner, UploadIcon } from './icons';
@@ -70,6 +71,7 @@ export const EnrichmentProcessor: React.FC<{
                                 <th style={{...thStyle, width: '70px'}}>Image</th>
                                 <th style={thStyle}>Original Name</th>
                                 <th style={thStyle}>{allDone ? 'Refined Name' : 'Status'}</th>
+                                <th style={{...thStyle, width: '100px'}}>Variants</th>
                                 {allDone && <th style={{...thStyle, textAlign: 'center', width: '100px'}}>Reviewed</th>}
                                 {allDone && <th style={{...thStyle, width: '100px'}}>Actions</th>}
                             </tr>
@@ -85,6 +87,11 @@ export const EnrichmentProcessor: React.FC<{
                                         {p.status === 'processing' && <span style={{ display: 'flex', alignItems: 'center' }}><LoadingSpinner/> <span style={{marginLeft: '0.5rem'}}>Processing...</span></span>}
                                         {p.status === 'error' && <span style={{ color: '#F87171' }} title={p.error}>Error</span>}
                                         {p.status === 'completed' && (p.result?.productName || <span style={{color: '#9CA3AF'}}>No name generated</span>)}
+                                    </td>
+                                    <td style={tdStyle}>
+                                        <span style={{ fontSize: '0.875rem', backgroundColor: '#374151', padding: '0.25rem 0.5rem', borderRadius: '99px' }}>
+                                            {p.result?.variants?.length || 0} variants
+                                        </span>
                                     </td>
                                      {allDone && (
                                         <td style={{...tdStyle, textAlign: 'center'}}>

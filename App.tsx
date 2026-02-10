@@ -9,7 +9,7 @@ import { SearchableSelect } from './components/SearchableSelect';
 import { BulkProcessor } from './components/BulkProcessor';
 import { EnrichmentProcessor } from './components/EnrichmentProcessor';
 import { CATEGORIES, BRANDS, ATTRIBUTES } from './constants';
-import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon } from './components/icons';
+import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon, TrashIcon } from './components/icons';
 import { buildCategoryTree } from './utils/categoryTree';
 import type { SavedProduct, Variant, BulkProduct, CsvProduct, EnrichmentCsvProduct, CategoryNode, Attribute } from './types';
 import { generateCsvContent, parseCsv, parseEnrichmentCsv } from './utils/csv';
@@ -47,7 +47,8 @@ const ProductEditor: React.FC<{
     const [error, setError] = useState<string | null>(null);
     const [analysisCompleted, setAnalysisCompleted] = useState<boolean>(!!initialData.productName);
 
-    const [variants, setVariants] = useState<Variant[]>([]);
+    const [variants, setVariants] = useState<Variant[]>(initialData.variants || []);
+    const [quickAddColors, setQuickAddColors] = useState<string>('');
 
     const categoryTree = useMemo(() => buildCategoryTree(CATEGORIES), []);
     const watchCategoryTree = useMemo(() => categoryTree.find(node => node.id === 4287)?.children ?? [], [categoryTree]);
@@ -74,6 +75,9 @@ const ProductEditor: React.FC<{
         setIsLoading(true);
         setError(null);
         setAnalysisCompleted(false);
+
+        const variantColors = variants.map(v => v.color).filter(Boolean);
+
         try {
             const { categoryIds, attributeIds, productName, titleTag, metaDescription, suggestedTags, shortDescription, longDescription, primaryCategoryId } = await categorizeProduct(
                 imageFile,
@@ -82,7 +86,8 @@ const ProductEditor: React.FC<{
                 model || undefined,
                 price || undefined,
                 userProvidedDetails || undefined,
-                initialData.originalName || initialData.productName
+                initialData.originalName || initialData.productName,
+                variantColors
             );
             setSelectedCategories(new Set(categoryIds));
             setSelectedAttributes(new Set(attributeIds));
@@ -107,7 +112,7 @@ const ProductEditor: React.FC<{
             return;
         }
         const product: SavedProduct = {
-            sku: initialData.originalId ? initialData.sku! : sku, // Keep original SKU for enriched products
+            sku: initialData.originalId ? initialData.sku! : sku, 
             productType: selectedProductType as 'watch' | 'glasses',
             price,
             imageSource: imageSource!,
@@ -125,10 +130,7 @@ const ProductEditor: React.FC<{
             isReviewed: true,
             originalId: initialData.originalId,
             originalName: initialData.originalName,
-            variantSku: initialData.variantSku,
-            variantColor: initialData.variantColor,
-            variantSize: initialData.variantSize,
-            variantOther: initialData.variantOther,
+            variants,
         };
         onSave(product, variants);
     };
@@ -199,16 +201,52 @@ const ProductEditor: React.FC<{
         });
     };
 
+    const handleAddVariant = () => {
+        const newVariant: Variant = {
+            id: Math.random().toString(36).substr(2, 9),
+            sku: `${sku}-${variants.length + 1}`,
+            color: '',
+            size: '',
+            price: price,
+            other: ''
+        };
+        setVariants([...variants, newVariant]);
+    };
+
+    const handleQuickAdd = () => {
+        if (!quickAddColors) return;
+        const colors = quickAddColors.split(',').map(c => c.trim()).filter(Boolean);
+        const newVariants = colors.map((color, i) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            sku: `${sku}-${variants.length + i + 1}`,
+            color: color,
+            size: '',
+            price: price,
+            other: ''
+        }));
+        setVariants([...variants, ...newVariants]);
+        setQuickAddColors('');
+    };
+
+    const handleUpdateVariant = (id: string, field: keyof Variant, value: string) => {
+        setVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
+    };
+
+    const handleRemoveVariant = (id: string) => {
+        setVariants(prev => prev.filter(v => v.id !== id));
+    };
+
     const isStep1Complete = sku && selectedProductType && selectedBrandId;
     const isReadyForAnalysis = isStep1Complete && !!imageFile;
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem', alignItems: 'start' }}>
+            {/* Left Column: Input and Image */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>1. Product Details</h2>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <input type="text" placeholder="SKU" value={sku} onChange={e => setSku(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                        <input type="text" placeholder="Base SKU (e.g., RADO-001)" value={sku} onChange={e => setSku(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
                         <select value={selectedProductType} onChange={e => setSelectedProductType(e.target.value as any)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
                             <option value="">Select Product Type</option>
                             <option value="watch">Watch</option>
@@ -217,47 +255,116 @@ const ProductEditor: React.FC<{
                         <SearchableSelect options={BRANDS} value={selectedBrandId} onChange={setSelectedBrandId} placeholder="Select Brand" disabled={!selectedProductType} />
                         <input type="text" placeholder="Model / Style Name" value={model} onChange={e => setModel(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
                         <input type="text" placeholder="Price (e.g., 50000)" value={price} onChange={e => setPrice(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
-                        <textarea placeholder="Optional: Provide any extra details for the AI..." value={userProvidedDetails} onChange={e => setUserProvidedDetails(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', resize: 'vertical' }} />
+                        <textarea placeholder="Extra details for AI..." value={userProvidedDetails} onChange={e => setUserProvidedDetails(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', resize: 'vertical' }} />
                     </div>
                 </div>
+
                 <ImageUploader imageUrl={imageUrl} onImageSelect={handleImageFileSelect} onImageUrlFetch={handleImageUrlFetch} onReset={handleResetImage} isLoading={isLoading} isFetchingImage={isFetchingImage} error={error} hasImage={!!imageUrl} disabled={!isStep1Complete} />
                 <button onClick={handleStartAnalysis} disabled={!isReadyForAnalysis || isLoading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '0.75rem 1rem', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: !isReadyForAnalysis || isLoading ? 'not-allowed' : 'pointer', opacity: !isReadyForAnalysis || isLoading ? 0.6 : 1 }}>
                     <SparklesIcon /> <span style={{ marginLeft: '0.5rem' }}>{isLoading ? 'Analyzing...' : 'Start AI Analysis'}</span>
                 </button>
             </div>
 
-            <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem', opacity: analysisCompleted ? 1 : 0.5, transition: 'opacity 0.3s' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>3. AI Generated Content</h2>
-                {!analysisCompleted ? (
-                    <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '4rem 0' }}>Complete steps 1 & 2 and run analysis to see results.</div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <input type="text" placeholder="Product Name" value={productName} onChange={e => setProductName(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', gridColumn: '1 / -1' }} />
-                            <select value={primaryCategoryId} onChange={e => setPrimaryCategoryId(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', gridColumn: '1 / -1' }}>
-                                <option value="">Select Primary Category</option>
-                                {allCategoriesFlat.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                            <input type="text" placeholder="SEO Title Tag" value={titleTag} onChange={e => setTitleTag(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
-                            <input type="text" placeholder="Suggested Tags" value={suggestedTags} onChange={e => setSuggestedTags(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+            {/* Right Column: Variants and Content */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                
+                {/* Variants Section - Improved UX */}
+                <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <div>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', margin: 0 }}>Product Variations</h2>
+                            <p style={{ color: '#9CA3AF', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>Manage colors and sizes for this item.</p>
                         </div>
-                        <textarea placeholder="SEO Meta Description" value={metaDescription} onChange={e => setMetaDescription(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
-                        <textarea placeholder="Short Description" value={shortDescription} onChange={e => setShortDescription(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
-                        <textarea placeholder="Long Description (HTML)" value={longDescription} onChange={e => setLongDescription(e.target.value)} rows={10} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', fontFamily: 'monospace' }} />
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '300px' }}>
-                            <CategorySelector title="Categories" categoryTree={currentCategoryTree} selectedCategories={selectedCategories} onCategoryToggle={handleCategoryToggle} isLoading={isLoading} />
-                            <AttributeSelector title="Attributes" attributes={currentAttributes} selectedAttributes={selectedAttributes} onAttributeToggle={handleAttributeToggle} isLoading={isLoading} />
-                        </div>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                            {onCancel && <button onClick={onCancel} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>}
-                            <button onClick={handleSave} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.75rem 1.5rem', backgroundColor: '#16A34A', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
-                                <SaveIcon /> <span style={{ marginLeft: '0.5rem' }}>{saveButtonText}</span>
-                            </button>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                            <div style={{ display: 'flex', border: '1px solid #4B5563', borderRadius: '0.375rem', overflow: 'hidden' }}>
+                                <input 
+                                    type="text" 
+                                    placeholder="Add multiple colors (e.g. Red, Blue)" 
+                                    value={quickAddColors} 
+                                    onChange={e => setQuickAddColors(e.target.value)}
+                                    style={{ backgroundColor: '#111827', border: 'none', color: 'white', padding: '0.5rem 0.75rem', fontSize: '0.875rem', width: '250px' }}
+                                />
+                                <button onClick={handleQuickAdd} style={{ padding: '0.5rem 1rem', backgroundColor: '#4B5563', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>Quick Add</button>
+                            </div>
+                            <button onClick={handleAddVariant} style={{ padding: '0.5rem 1rem', backgroundColor: '#6366F1', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>+ New Row</button>
                         </div>
                     </div>
-                )}
+                    
+                    {variants.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', border: '2px dashed #374151', borderRadius: '0.5rem', color: '#6B7280' }}>
+                            No variants added. The master SKU will be used for export.
+                        </div>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>SKU</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Color</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Size</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Price</th>
+                                        <th style={{ width: '40px' }}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {variants.map((v) => (
+                                        <tr key={v.id}>
+                                            <td style={{ padding: '0.25rem' }}>
+                                                <input type="text" value={v.sku} onChange={e => handleUpdateVariant(v.id, 'sku', e.target.value)} style={{ width: '100%', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white', padding: '0.5rem', borderRadius: '0.25rem' }} />
+                                            </td>
+                                            <td style={{ padding: '0.25rem' }}>
+                                                <input type="text" value={v.color} onChange={e => handleUpdateVariant(v.id, 'color', e.target.value)} style={{ width: '100%', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white', padding: '0.5rem', borderRadius: '0.25rem' }} />
+                                            </td>
+                                            <td style={{ padding: '0.25rem' }}>
+                                                <input type="text" value={v.size} onChange={e => handleUpdateVariant(v.id, 'size', e.target.value)} style={{ width: '100%', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white', padding: '0.5rem', borderRadius: '0.25rem' }} />
+                                            </td>
+                                            <td style={{ padding: '0.25rem' }}>
+                                                <input type="text" value={v.price} onChange={e => handleUpdateVariant(v.id, 'price', e.target.value)} style={{ width: '100%', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white', padding: '0.5rem', borderRadius: '0.25rem' }} />
+                                            </td>
+                                            <td style={{ padding: '0.25rem', textAlign: 'center' }}>
+                                                <button onClick={() => handleRemoveVariant(v.id)} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer' }}><TrashIcon /></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem', opacity: analysisCompleted ? 1 : 0.5, transition: 'opacity 0.3s' }}>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>3. AI Generated Content</h2>
+                    {!analysisCompleted ? (
+                        <div style={{ textAlign: 'center', color: '#9CA3AF', padding: '4rem 0' }}>Complete steps 1 & 2 and run analysis to see results.</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <input type="text" placeholder="Product Name" value={productName} onChange={e => setProductName(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', gridColumn: '1 / -1' }} />
+                                <select value={primaryCategoryId} onChange={e => setPrimaryCategoryId(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', gridColumn: '1 / -1' }}>
+                                    <option value="">Select Primary Category</option>
+                                    {allCategoriesFlat.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                                <input type="text" placeholder="SEO Title Tag" value={titleTag} onChange={e => setTitleTag(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                                <input type="text" placeholder="Suggested Tags" value={suggestedTags} onChange={e => setSuggestedTags(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                            </div>
+                            <textarea placeholder="SEO Meta Description" value={metaDescription} onChange={e => setMetaDescription(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                            <textarea placeholder="Short Description" value={shortDescription} onChange={e => setShortDescription(e.target.value)} rows={3} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                            <textarea placeholder="Long Description (HTML)" value={longDescription} onChange={e => setLongDescription(e.target.value)} rows={10} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', fontFamily: 'monospace' }} />
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', minHeight: '300px' }}>
+                                <CategorySelector title="Categories" categoryTree={currentCategoryTree} selectedCategories={selectedCategories} onCategoryToggle={handleCategoryToggle} isLoading={isLoading} />
+                                <AttributeSelector title="Attributes" attributes={currentAttributes} selectedAttributes={selectedAttributes} onAttributeToggle={handleAttributeToggle} isLoading={isLoading} />
+                            </div>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                {onCancel && <button onClick={onCancel} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>}
+                                <button onClick={handleSave} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.75rem 1.5rem', backgroundColor: '#16A34A', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
+                                    <SaveIcon /> <span style={{ marginLeft: '0.5rem' }}>{saveButtonText}</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -274,7 +381,7 @@ const App = () => {
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
     const [editingBulkIndex, setEditingBulkIndex] = useState<number | null>(null);
 
-    const handleSaveProduct = (product: SavedProduct, variants: Variant[]) => {
+    const handleSaveProduct = (product: SavedProduct) => {
         setSavedProducts(prev => [...prev, product]);
         alert("Product saved successfully!");
     };
@@ -282,7 +389,6 @@ const App = () => {
     const handleSaveBulkEditedProduct = (product: SavedProduct) => {
         if (editingBulkIndex === null) return;
         
-        // Capture isReviewed state BEFORE updating state to ensure we know if we need to sync to savedProducts
         const isReviewed = bulkProducts[editingBulkIndex].isReviewed;
 
         setBulkProducts(prev => {
@@ -295,7 +401,6 @@ const App = () => {
             return newProducts;
         });
 
-        // Sync updates to savedProducts if the item was already reviewed/saved
         if (isReviewed) {
              setSavedProducts(prev => 
                 prev.map(p => p.sku === product.sku ? { ...product, isReviewed: true } : p)
@@ -327,14 +432,12 @@ const App = () => {
             const blob = await response.blob();
             return new File([blob], "product-image.jpg", { type: blob.type });
         } catch (error: any) {
-            // Very common in browsers due to CORS
             throw new Error(`Image load failed (CORS?): ${error.message}`);
         }
     };
 
     const processBulkFile = async (file: File, type: 'create' | 'enrich') => {
         setIsBulkProcessing(true);
-        // Force a brief delay to allow React to render the processing state before blocking operations
         await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
@@ -373,15 +476,10 @@ const App = () => {
             }
 
             setBulkProducts(newProducts);
-
-            // Brief delay to allow the list to render in 'pending' state
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            // Process sequentially to be gentle on browser/API
             for (let i = 0; i < newProducts.length; i++) {
                 const currentId = newProducts[i].id;
-                
-                // Update status to processing
                 setBulkProducts(prev => prev.map(p => p.id === currentId ? { ...p, status: 'processing' } : p));
 
                 try {
@@ -395,13 +493,26 @@ const App = () => {
 
                     if (!imageFile) throw new Error("No image available");
 
-                    // Prepare args for categorizeProduct
                     let brandId: number | null = null;
                     const brandName = (productSource as any).brandName;
                     if (brandName) {
                         const brand = BRANDS.find(b => b.name.toLowerCase() === brandName.toLowerCase());
                         if (brand) brandId = brand.id;
                     }
+
+                    // Pre-generate variants from CSV colors if available
+                    const variantColorsStr = (productSource as any).variantColors || '';
+                    const initialVariants: Variant[] = variantColorsStr.split(',')
+                        .map((c: string) => c.trim())
+                        .filter(Boolean)
+                        .map((color: string, idx: number) => ({
+                            id: Math.random().toString(36).substr(2, 9),
+                            sku: `${(productSource as any).sku}-${idx + 1}`,
+                            color: color,
+                            size: '',
+                            price: (productSource as any).price || '',
+                            other: ''
+                        }));
 
                     let result;
                     let savedProduct: SavedProduct;
@@ -415,7 +526,8 @@ const App = () => {
                             p.model,
                             p.price,
                             p.userProvidedDetails,
-                            undefined
+                            undefined,
+                            initialVariants.map(v => v.color)
                          );
                          
                          savedProduct = {
@@ -435,8 +547,8 @@ const App = () => {
                             brandId: result.brandId,
                             model: p.model,
                             isReviewed: false,
-                            imageFile: imageFile
-                         } as any; // Cast to satisfy type system for helper fields
+                            variants: initialVariants
+                         };
 
                     } else {
                          const p = productSource as EnrichmentCsvProduct;
@@ -447,7 +559,8 @@ const App = () => {
                             undefined,
                             p.price,
                             undefined,
-                            p.name 
+                            p.name,
+                            initialVariants.map(v => v.color)
                          );
 
                          savedProduct = {
@@ -469,8 +582,8 @@ const App = () => {
                             isReviewed: false,
                             originalId: p.id,
                             originalName: p.name,
-                            imageFile: imageFile
-                         } as any;
+                            variants: initialVariants
+                         };
                     }
 
                     setBulkProducts(prev => prev.map(p => p.id === currentId ? { ...p, status: 'completed', result: savedProduct, imageFile } : p));
@@ -530,10 +643,8 @@ const App = () => {
             return newProducts;
         });
 
-        // Add or remove from Saved Products list automatically
         if (newReviewedState) {
              setSavedProducts(prev => {
-                // Prevent duplicates based on SKU
                 if (prev.some(p => p.sku === product.result!.sku)) return prev;
                 return [...prev, { ...product.result!, isReviewed: true }];
              });
@@ -561,14 +672,12 @@ const App = () => {
         </button>
     );
 
-    // Prepare initial data for editing a bulk product
     const getBulkEditInitialData = () => {
         if (editingBulkIndex === null) return {};
         const p = bulkProducts[editingBulkIndex];
         const src = p.source as any;
         const res = p.result;
         
-        // Prefer result data if available, fallback to source data
         return {
             sku: res?.sku || src.sku,
             productType: res?.productType || src.productType,
@@ -579,8 +688,6 @@ const App = () => {
             imageFile: p.imageFile,
             imageUrl: src.imageUrl,
             imageSource: src.imageUrl,
-            
-            // Generated fields
             productName: res?.productName,
             titleTag: res?.titleTag,
             metaDescription: res?.metaDescription,
@@ -590,8 +697,7 @@ const App = () => {
             primaryCategoryId: res?.primaryCategoryId,
             categoryIds: res?.categoryIds,
             attributeIds: res?.attributeIds,
-            
-            // Enrichment specific
+            variants: res?.variants || [],
             originalId: res?.originalId || (p.source as EnrichmentCsvProduct).id,
             originalName: res?.originalName || (p.source as EnrichmentCsvProduct).name
         };

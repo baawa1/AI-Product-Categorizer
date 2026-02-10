@@ -36,7 +36,8 @@ export const categorizeProduct = async (
     modelStr: string | undefined,
     price?: string,
     userProvidedDetails?: string,
-    existingProductName?: string
+    existingProductName?: string,
+    variants?: string[] // e.g., ["Red", "Blue", "Gold"]
 ): Promise<CategorizationResult> => {
   try {
     const imagePart = await fileToGenerativePart(imageFile);
@@ -54,6 +55,10 @@ export const categorizeProduct = async (
     }
     if (price) {
         contextInfo += ` The price is ${price} Naira.`;
+    }
+    
+    if (variants && variants.length > 0) {
+        contextInfo += ` NOTE: This product comes in multiple variations: ${variants.join(', ')}. Ensure your generated content (title, descriptions) acknowledges this variety by using inclusive language like "Available in multiple stunning colors" or "Choose your preferred style". Do not restrict the descriptions to only the color shown in the image.`;
     }
     contextInfo += ".";
 
@@ -79,7 +84,7 @@ export const categorizeProduct = async (
       : `1.  **Generate Product Name**: Create a clear, keyword-rich product name that incorporates the most impactful and searchable features you identify.
     -   **Foundation**: [Brand] [Key Feature 1] [Key Feature 2] [Gender/Style] [Product Type].
     -   Draw keywords from the most relevant attributes and categories you select.
-    -   **Examples**: "Casio G-Shock Men's Chronograph Leather Watch", "Ray-Ban Women's Acetate Blue Light Filter Glasses".`;
+    -   **Inclusive Naming**: If variants were provided, ensure the name is broad enough to cover them (e.g., use "Classic Leather Watch" instead of "Black Leather Watch" if multiple colors are available).`;
 
     const brandVerificationTask = isEnrichmentMode
         ? `2.  **Verify Brand**: The user suggests the brand is "${providedBrandName}". Your task is to verify this against the image. If it's correct, use it. If it is INCORRECT, identify the true brand from the image and select its corresponding ID from the 'Available Brands' list below. All subsequent content you generate MUST use the CORRECT brand.`
@@ -98,49 +103,31 @@ Here are additional details provided by the user:
 ${productNameTask}
 ${brandVerificationTask}
 
-${taskNumberingOffset + 2}.  **Generate SEO Title Tag**: Create a concise, keyword-rich title tag (50-60 characters). Start with the primary keyword (e.g., Brand + Model + Type). The title must be compelling for search engine users.
+${taskNumberingOffset + 2}.  **Generate SEO Title Tag**: Create a concise, keyword-rich title tag (50-60 characters). Start with the primary keyword. The title must be compelling and, if variants exist, mention that options are available.
 
 ${taskNumberingOffset + 3}.  **Generate Meta Description**: Write a compelling meta description (150-160 characters). It must entice clicks and include the phrase "We deliver to all states in Nigeria, including Lagos, PH, Abuja, and Kaduna.".
 
-${taskNumberingOffset + 4}.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string. Example: "shock resistant, 200m water resistance, luminous hands, gold accents".
+${taskNumberingOffset + 4}.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string.
 
-${taskNumberingOffset + 5}.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit. Example: "A testament to resilience and bold design, this G-Shock is crafted for the modern man who demands both extreme durability and undeniable style."
+${taskNumberingOffset + 5}.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit.
 
 ${taskNumberingOffset + 6}.  **Generate Long Description (Ogilvy Style for Nigeria)**:
     -   Write a detailed, SEO-optimized description that combines the best of SEO (structured headings, keywords) and CRO (addressing customer pain points, building trust, hyper-local relevance).
+    -   If variants exist, include a section or sentence about the variety of colors/styles available.
     -   **Structure**:
         1.  Start with a strong opening paragraph.
-        2.  Use an \`<h2>\` heading that identifies a common customer problem and positions this product as the solution (e.g., "The End of Fragile, Low-Quality Glasses").
+        2.  Use an \`<h2>\` heading that identifies a common customer problem and positions this product as the solution.
         3.  Use an \`<h3>\` for "Key Features" followed by a \`<ul>\` list. Use \`<strong>\` for the feature names.
-        4.  Use an \`<h2>\` heading for a hyper-local styling guide (e.g., "Perfect for Any Nigerian Occasion") and provide context-specific advice.
-        5.  Use an \`<h2>\` heading for trust-building (e.g., "Our Promise: Quality & Authenticity") and list guarantees as a \`<ul>\`.
-    -   **Tone & Style**: Factual, confident, benefit-oriented. Subtly weave in local relevance (e.g., "built to withstand the hustle of a Lagos lifestyle," "a statement of sophistication in Abuja").
-    -   **ABSOLUTE CRITICAL FORMATTING RULE**: Generate the HTML with proper indentation and newlines for human readability. Do not minify the HTML. Your entire response is a failure if this rule is not followed. DO NOT return a minified, single-line HTML string.
-        *Example of the EXACT required format:*
-        \`\`\`html
-        <p>A testament to resilience and bold design, this Casio G-Shock is crafted for the modern Nigerian man who demands both extreme durability and undeniable style.</p>
-        <h2>The Ultimate Timepiece for the Nigerian Hustle</h2>
-        <p>Tired of watches that can't keep up? This G-Shock is engineered for the toughest challenges, from the daily commute in Lagos to outdoor adventures, its legendary shock resistance ensures performance you can trust.</p>
-        <h3>Key Features:</h3>
-        <ul>
-          <li><strong>Legendary Durability:</strong> The iconic shock-resistant construction protects against impacts and vibration.</li>
-          <li><strong>Superior Water Resistance:</strong> With a 200-meter (20 BAR) water resistance rating, it's perfect for swimming.</li>
-        </ul>
-        <h2>Styling for the Modern Nigerian Man</h2>
-        <p>Whether paired with sharp business attire for a meeting in Abuja or casual wear for a weekend in Port Harcourt, this watch makes a powerful statement.</p>
-        <h2>Our Promise: Quality & Authenticity</h2>
-        <ul>
-            <li><strong>100% Genuine:</strong> We guarantee this is an authentic Casio product.</li>
-            <li><strong>Nationwide Delivery:</strong> Fast, reliable delivery to your doorstep anywhere in Nigeria.</li>
-        </ul>
-        \`\`\`
+        4.  Use an \`<h2>\` heading for a hyper-local styling guide.
+        5.  Use an \`<h2>\` heading for trust-building.
+    -   **ABSOLUTE CRITICAL FORMATTING RULE**: Generate the HTML with proper indentation and newlines for human readability.
 
 ${taskNumberingOffset + 7}.  **Categorize & Attribute**:
-    -   Select ALL relevant categories from the list provided. You MUST include the main parent category ('Watches Nigeria' or 'Glasses Nigeria').
+    -   Select ALL relevant categories from the list provided. You MUST include the main parent category.
     -   ${locationSelectionInstruction}
     -   Select ALL relevant attributes from the provided list.
     
-${taskNumberingOffset + 8}. **Select Primary Category**: From the "Available Categories" list, select the SINGLE most appropriate and specific, feature-based category for this product. This category is critical as it will be used to generate the product's URL slug (e.g., /products/mens-leather-watches-nigeria). It must be the most descriptive choice possible. For example, for a man's watch with a leather strap, 'Men's Leather Watches Nigeria' is a far better choice than 'Men's Watches Nigeria' or 'Watches Nigeria'.
+${taskNumberingOffset + 8}. **Select Primary Category**: From the "Available Categories" list, select the SINGLE most appropriate and specific, feature-based category for this product URL.
 
 **Data Lists for Categorization:**
 Available Categories:

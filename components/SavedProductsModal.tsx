@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import type { SavedProduct, Brand } from '../types';
 import { CloseIcon, DownloadIcon, TrashIcon } from './icons';
@@ -90,11 +91,44 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
         transition: 'background-color 0.2s',
     };
 
+    // Flatten products to show variants as separate rows
+    const displayRows = useMemo(() => {
+        const rows: any[] = [];
+        products.forEach(p => {
+            if (p.variants && p.variants.length > 0) {
+                p.variants.forEach(v => {
+                    rows.push({
+                        sku: v.sku,
+                        baseSku: p.sku,
+                        name: p.productName,
+                        brand: p.brandId ? brandMap.get(p.brandId) : 'N/A',
+                        model: p.model,
+                        color: v.color || 'N/A',
+                        size: v.size || 'N/A',
+                        price: v.price || p.price
+                    });
+                });
+            } else {
+                rows.push({
+                    sku: p.sku,
+                    baseSku: p.sku,
+                    name: p.productName,
+                    brand: p.brandId ? brandMap.get(p.brandId) : 'N/A',
+                    model: p.model,
+                    color: 'N/A',
+                    size: 'N/A',
+                    price: p.price
+                });
+            }
+        });
+        return rows;
+    }, [products, brandMap]);
+
     return (
         <div style={modalStyle} onClick={onClose}>
             <div style={contentStyle} onClick={e => e.stopPropagation()}>
                 <header style={headerStyle}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Saved Products ({products.length})</h2>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Saved Items ({displayRows.length})</h2>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                          <button
                             style={{...buttonStyle, backgroundColor: '#DC2626'}}
@@ -103,7 +137,7 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                             onClick={onClearAll}
                          >
                             <TrashIcon />
-                            <span style={{marginLeft: '0.5rem'}}>Clear All Data</span>
+                            <span style={{marginLeft: '0.5rem'}}>Clear All</span>
                          </button>
                          <button
                             style={{...buttonStyle, backgroundColor: '#16A34A'}}
@@ -112,7 +146,7 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                             onClick={onDownload}
                          >
                             <DownloadIcon />
-                            <span style={{marginLeft: '0.5rem'}}>Download as CSV</span>
+                            <span style={{marginLeft: '0.5rem'}}>Download CSV</span>
                          </button>
                         <button
                             style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer' }}
@@ -128,31 +162,27 @@ export const SavedProductsModal: React.FC<SavedProductsModalProps> = ({ products
                         <thead>
                             <tr>
                                 <th style={thStyle}>SKU</th>
-                                <th style={thStyle}>Variant SKU</th>
                                 <th style={thStyle}>Name</th>
                                 <th style={thStyle}>Brand</th>
                                 <th style={thStyle}>Model</th>
                                 <th style={thStyle}>Color</th>
-                                <th style={thStyle}>Size</th>
                                 <th style={thStyle}>Price</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {products.length > 0 ? products.map((product, index) => (
-                                <tr key={`${product.sku}-${product.variantSku || index}`} style={{ backgroundColor: '#1F2937' }}>
-                                    <td style={{ ...tdStyle, fontWeight: 500 }}>{product.sku}</td>
-                                    <td style={tdStyle}>{product.variantSku || 'N/A'}</td>
-                                    <td style={tdStyle} title={product.productName}>{product.productName}</td>
-                                    <td style={tdStyle}>{product.brandId ? brandMap.get(product.brandId) : 'N/A'}</td>
-                                    <td style={tdStyle}>{product.model || 'N/A'}</td>
-                                    <td style={tdStyle}>{product.variantColor || 'N/A'}</td>
-                                    <td style={tdStyle}>{product.variantSize || 'N/A'}</td>
-                                    <td style={tdStyle}>{product.price}</td>
+                            {displayRows.length > 0 ? displayRows.map((row, index) => (
+                                <tr key={`${row.sku}-${index}`} style={{ backgroundColor: '#1F2937' }}>
+                                    <td style={{ ...tdStyle, fontWeight: 500 }}>{row.sku}</td>
+                                    <td style={tdStyle} title={row.name}>{row.name}</td>
+                                    <td style={tdStyle}>{row.brand}</td>
+                                    <td style={tdStyle}>{row.model || 'N/A'}</td>
+                                    <td style={tdStyle}>{row.color}</td>
+                                    <td style={tdStyle}>{row.price}</td>
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={8} style={{...tdStyle, textAlign: 'center', color: '#6B7280', padding: '2rem'}}>
-                                        No products saved yet.
+                                    <td colSpan={6} style={{...tdStyle, textAlign: 'center', color: '#6B7280', padding: '2rem'}}>
+                                        No items saved yet.
                                     </td>
                                 </tr>
                             )}
