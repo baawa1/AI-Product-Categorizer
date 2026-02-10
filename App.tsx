@@ -13,6 +13,7 @@ import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon, TrashIcon 
 import { buildCategoryTree } from './utils/categoryTree';
 import type { SavedProduct, Variant, BulkProduct, CsvProduct, EnrichmentCsvProduct, CategoryNode, Attribute } from './types';
 import { generateCsvContent, parseCsv, parseEnrichmentCsv } from './utils/csv';
+import { generateSmartSku } from './utils/product-utils';
 
 const ProductEditor: React.FC<{
     initialData: Partial<SavedProduct & { sku: string; productType: 'watch' | 'glasses'; brandId: number | null, model: string, price: string, userProvidedDetails: string, imageFile: File | null, imageUrl: string | null, imageSource: string | null }>;
@@ -69,6 +70,13 @@ const ProductEditor: React.FC<{
     
     const { categories: currentCategoryTree, attributes: currentAttributes } = getDynamicContent(selectedProductType);
 
+    const handleMagicSku = () => {
+        const brandName = BRANDS.find(b => String(b.id) === selectedBrandId)?.name;
+        // Changed to use model name for the third segment
+        const newSku = generateSmartSku(selectedProductType, brandName, model);
+        setSku(newSku);
+    };
+
     const handleStartAnalysis = async () => {
         if (!imageFile || !selectedProductType || !sku || !selectedBrandId) return;
 
@@ -79,9 +87,9 @@ const ProductEditor: React.FC<{
         const variantColors = variants.map(v => v.color).filter(Boolean);
 
         try {
-            const { categoryIds, attributeIds, productName, titleTag, metaDescription, suggestedTags, shortDescription, longDescription, primaryCategoryId } = await categorizeProduct(
+            const result = await categorizeProduct(
                 imageFile,
-                selectedProductType,
+                selectedProductType as 'watch' | 'glasses',
                 selectedBrandId ? parseInt(selectedBrandId, 10) : null,
                 model || undefined,
                 price || undefined,
@@ -89,16 +97,24 @@ const ProductEditor: React.FC<{
                 initialData.originalName || initialData.productName,
                 variantColors
             );
-            setSelectedCategories(new Set(categoryIds));
-            setSelectedAttributes(new Set(attributeIds));
-            setProductName(productName);
-            setTitleTag(titleTag);
-            setMetaDescription(metaDescription);
-            setSuggestedTags(suggestedTags);
-            setShortDescription(shortDescription);
-            setLongDescription(longDescription);
-            setPrimaryCategoryId(primaryCategoryId ? String(primaryCategoryId) : '');
+            setSelectedCategories(new Set(result.categoryIds));
+            setSelectedAttributes(new Set(result.attributeIds));
+            setProductName(result.productName);
+            setTitleTag(result.titleTag);
+            setMetaDescription(result.metaDescription);
+            setSuggestedTags(result.suggestedTags);
+            setShortDescription(result.shortDescription);
+            setLongDescription(result.longDescription);
+            setPrimaryCategoryId(result.primaryCategoryId ? String(result.primaryCategoryId) : '');
             setAnalysisCompleted(true);
+            
+            // If the SKU was just a placeholder or empty, generate a real one now that we have AI data
+            if (!sku || sku.includes('TEMP')) {
+                const brandName = BRANDS.find(b => String(b.id) === selectedBrandId)?.name;
+                // Changed to use model name for the third segment
+                setSku(generateSmartSku(selectedProductType, brandName, model));
+            }
+
         } catch (e: any) {
             setError(e.message || 'An unknown error occurred during analysis.');
         } finally {
@@ -122,7 +138,7 @@ const ProductEditor: React.FC<{
             suggestedTags,
             shortDescription,
             longDescription,
-            primaryCategoryId: parseInt(primaryCategoryId, 10),
+            primaryCategoryId: primaryCategoryId ? parseInt(primaryCategoryId, 10) : null,
             categoryIds: Array.from(selectedCategories),
             attributeIds: Array.from(selectedAttributes),
             brandId: selectedBrandId ? parseInt(selectedBrandId, 10) : null,
@@ -241,12 +257,26 @@ const ProductEditor: React.FC<{
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem', alignItems: 'start' }}>
-            {/* Left Column: Input and Image */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>1. Product Details</h2>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <input type="text" placeholder="Base SKU (e.g., RADO-001)" value={sku} onChange={e => setSku(e.target.value)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }} />
+                        <div style={{ position: 'relative', display: 'flex', gap: '0.5rem' }}>
+                            <input 
+                                type="text" 
+                                placeholder="Base SKU (e.g., WAT-RO-SUB-1234)" 
+                                value={sku} 
+                                onChange={e => setSku(e.target.value)} 
+                                style={{ flex: 1, backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', width: '100%' }} 
+                            />
+                            <button 
+                                onClick={handleMagicSku} 
+                                title="Generate Smart SKU"
+                                style={{ backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '0.375rem', width: '42px', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <SparklesIcon />
+                            </button>
+                        </div>
                         <select value={selectedProductType} onChange={e => setSelectedProductType(e.target.value as any)} style={{ backgroundColor: '#374151', color: 'white', border: '1px solid #4B5563', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
                             <option value="">Select Product Type</option>
                             <option value="watch">Watch</option>
@@ -265,10 +295,7 @@ const ProductEditor: React.FC<{
                 </button>
             </div>
 
-            {/* Right Column: Variants and Content */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                
-                {/* Variants Section - Improved UX */}
                 <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                         <div>
@@ -296,14 +323,14 @@ const ProductEditor: React.FC<{
                         </div>
                     ) : (
                         <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                                 <thead>
                                     <tr>
-                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>SKU</th>
-                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Color</th>
-                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Size</th>
-                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase' }}>Price</th>
-                                        <th style={{ width: '40px' }}></th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase', width: '25%' }}>SKU</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase', width: '25%' }}>Color</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase', width: '20%' }}>Size</th>
+                                        <th style={{ textAlign: 'left', padding: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase', width: '20%' }}>Price</th>
+                                        <th style={{ width: '10%' }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -322,7 +349,7 @@ const ProductEditor: React.FC<{
                                                 <input type="text" value={v.price} onChange={e => handleUpdateVariant(v.id, 'price', e.target.value)} style={{ width: '100%', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white', padding: '0.5rem', borderRadius: '0.25rem' }} />
                                             </td>
                                             <td style={{ padding: '0.25rem', textAlign: 'center' }}>
-                                                <button onClick={() => handleRemoveVariant(v.id)} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer' }}><TrashIcon /></button>
+                                                <button onClick={() => handleRemoveVariant(v.id)} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.5rem' }}><TrashIcon /></button>
                                             </td>
                                         </tr>
                                     ))}
@@ -500,7 +527,6 @@ const App = () => {
                         if (brand) brandId = brand.id;
                     }
 
-                    // Pre-generate variants from CSV colors if available
                     const variantColorsStr = (productSource as any).variantColors || '';
                     const initialVariants: Variant[] = variantColorsStr.split(',')
                         .map((c: string) => c.trim())
@@ -529,9 +555,16 @@ const App = () => {
                             undefined,
                             initialVariants.map(v => v.color)
                          );
+
+                         let finalSku = p.sku;
+                         if (!finalSku || finalSku === 'TEMP') {
+                             const finalBrandName = BRANDS.find(b => b.id === result.brandId)?.name;
+                             // Changed to use model for segment 3
+                             finalSku = generateSmartSku(p.productType, finalBrandName, p.model);
+                         }
                          
                          savedProduct = {
-                            sku: p.sku,
+                            sku: finalSku,
                             productType: p.productType as 'watch' | 'glasses',
                             price: p.price,
                             imageSource: p.imageUrl,
@@ -623,7 +656,7 @@ const App = () => {
         if (link.download !== undefined) {
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", "bulk_results.csv");
+            link.setAttribute("download", "products.csv");
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
             link.click();
@@ -680,21 +713,21 @@ const App = () => {
         
         return {
             sku: res?.sku || src.sku,
-            productType: res?.productType || src.productType,
-            brandId: res?.brandId || (src.brandName ? BRANDS.find(b => b.name.toLowerCase() === src.brandName.toLowerCase())?.id : null),
+            productType: (res?.productType || src.productType || undefined) as 'watch' | 'glasses' | undefined,
+            brandId: res?.brandId ?? (src.brandName ? BRANDS.find(b => b.name.toLowerCase() === src.brandName.toLowerCase())?.id : null) ?? null,
             model: res?.model || src.model || '',
             price: res?.price || src.price,
             userProvidedDetails: src.userProvidedDetails || '',
-            imageFile: p.imageFile,
-            imageUrl: src.imageUrl,
-            imageSource: src.imageUrl,
+            imageFile: p.imageFile || null,
+            imageUrl: src.imageUrl || null,
+            imageSource: src.imageUrl || null,
             productName: res?.productName,
             titleTag: res?.titleTag,
             metaDescription: res?.metaDescription,
             suggestedTags: res?.suggestedTags,
             shortDescription: res?.shortDescription,
             longDescription: res?.longDescription,
-            primaryCategoryId: res?.primaryCategoryId,
+            primaryCategoryId: res?.primaryCategoryId ?? null,
             categoryIds: res?.categoryIds,
             attributeIds: res?.attributeIds,
             variants: res?.variants || [],
@@ -746,7 +779,7 @@ const App = () => {
                             isProcessing={isBulkProcessing} 
                             onEdit={setEditingBulkIndex} 
                             onDownload={handleBulkDownload} 
-                            onReset={handleBulkReset}
+                            onReset={handleBulkReset} 
                             onToggleReviewed={handleBulkToggleReviewed}
                         />
                     )}

@@ -1,6 +1,34 @@
 
 import type { SavedProduct, Category, Brand, Attribute, CsvProduct, EnrichmentCsvProduct } from '../types';
 
+/**
+ * Finds the closest brand name match to handle typos.
+ */
+const findBestBrandMatch = (input: string, brands: Brand[]): Brand | undefined => {
+    const normalizedInput = input.trim().toLowerCase();
+    
+    // 1. Try exact match
+    const exact = brands.find(b => b.name.toLowerCase() === normalizedInput);
+    if (exact) return exact;
+
+    // 2. Try matching based on the first word (handles things like "Audemers" vs "Audemars Piguet")
+    const inputFirstWord = normalizedInput.split(' ')[0];
+    const wordMatch = brands.find(b => {
+        const bName = b.name.toLowerCase();
+        const bFirstWord = bName.split(' ')[0];
+        // Check if first words are very similar (starts with or includes)
+        return bFirstWord.startsWith(inputFirstWord.substring(0, 4)) || 
+               inputFirstWord.startsWith(bFirstWord.substring(0, 4));
+    });
+    if (wordMatch) return wordMatch;
+
+    // 3. Fallback to general inclusion
+    return brands.find(b => {
+        const bName = b.name.toLowerCase();
+        return bName.includes(normalizedInput) || normalizedInput.includes(bName);
+    });
+};
+
 export const generateCsvContent = (products: SavedProduct[], allCategories: Category[], allBrands: Brand[], allAttributes: Attribute[]): string => {
     if (products.length === 0) return '';
 
@@ -29,7 +57,6 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
         const attributeNames = product.attributeIds.map(id => attributeMap.get(id) || '').join('; ');
         const brandName = product.brandId ? brandMap.get(product.brandId) || '' : '';
 
-        // Function to create a base array of shared fields
         const createBaseRowData = (vSku: string, vColor: string, vSize: string, vPrice: string, vOther: string) => [
             escapeCsvField(vSku), 
             escapeCsvField(product.productName),
@@ -66,7 +93,6 @@ export const generateCsvContent = (products: SavedProduct[], allCategories: Cate
                 }
             });
         } else {
-            // No variants, just export the master row
             const rowData = createBaseRowData(product.sku, '', '', product.price, '');
             if (hasEnrichmentData) {
                 csvRows.push([escapeCsvField(product.originalId), escapeCsvField(product.originalName), ...rowData].join(','));
@@ -93,10 +119,7 @@ const CSV_HEADERS = {
 const detectSeparator = (line: string): string => {
     const commaCount = (line.match(/,/g) || []).length;
     const tabCount = (line.match(/\t/g) || []).length;
-    if (tabCount > 0 && tabCount > commaCount) {
-        return '\t';
-    }
-    return ','; 
+    return (tabCount > 0 && tabCount > commaCount) ? '\t' : ',';
 };
 
 export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
@@ -115,7 +138,6 @@ export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
         } else {
             lineBuffer = line.trim();
         }
-
         const separatorRegex = new RegExp(separator, 'g');
         const columnCount = (lineBuffer.match(separatorRegex) || []).length;
         if (columnCount >= numColumns - 1) {
@@ -123,22 +145,14 @@ export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
             lineBuffer = '';
         }
     }
-    if (lineBuffer.trim()) {
-        lines.push(lineBuffer); 
-    }
+    if (lineBuffer.trim()) lines.push(lineBuffer);
     
     const requiredHeaders = [CSV_HEADERS.SKU, CSV_HEADERS.TYPE, CSV_HEADERS.BRAND, CSV_HEADERS.IMAGE_URL];
     const missingHeaders = requiredHeaders.filter(rh => !header.includes(rh));
-    if (missingHeaders.length > 0) {
-        throw new Error(`CSV is missing required headers: ${missingHeaders.join(', ')}`);
-    }
-
-    const brandMap = new Map<string, number>(brands.map(b => [b.name.toLowerCase(), b.id]));
-    const headerCount = header.length;
+    if (missingHeaders.length > 0) throw new Error(`CSV is missing required headers: ${missingHeaders.join(', ')}`);
 
     return lines.map((line, index) => {
         let values = line.split(separator);
-
         const row: any = {};
         header.forEach((h, i) => {
             if(values[i]) row[h] = values[i].trim().replace(/^"|"$/g, '');
@@ -158,7 +172,13 @@ export const parseCsv = (content: string, brands: Brand[]): CsvProduct[] => {
         if (!product.sku) throw new Error(`Row ${index + 2}: SKU is missing.`);
         if (!product.productType || !['watch', 'glasses'].includes(product.productType)) throw new Error(`Row ${index + 2}: Type must be 'watch' or 'glasses'.`);
         if (!product.brandName) throw new Error(`Row ${index + 2}: Brand is missing.`);
-        if (!brandMap.has(product.brandName.toLowerCase())) throw new Error(`Row ${index + 2}: Brand "${product.brandName}" not found in the brand list.`);
+        
+        const bestMatch = findBestBrandMatch(product.brandName, brands);
+        if (!bestMatch) throw new Error(`Row ${index + 2}: Brand "${product.brandName}" not found in the brand list.`);
+        
+        // Normalize the brand name to our official one
+        product.brandName = bestMatch.name;
+
         if (!product.imageUrl) throw new Error(`Row ${index + 2}: Image URL is missing.`);
 
         return product as CsvProduct;
@@ -195,11 +215,7 @@ export const parseEnrichmentCsv = (content: string, brands: Brand[]): Enrichment
 
     const requiredHeaders = [ENRICHMENT_CSV_HEADERS.ID, ENRICHMENT_CSV_HEADERS.SKU, ENRICHMENT_CSV_HEADERS.NAME, ENRICHMENT_CSV_HEADERS.TYPE, ENRICHMENT_CSV_HEADERS.BRAND, ENRICHMENT_CSV_HEADERS.IMAGE_URL];
     const missingHeaders = requiredHeaders.filter(rh => !header.includes(rh));
-    if (missingHeaders.length > 0) {
-        throw new Error(`CSV is missing required headers for enrichment: ${missingHeaders.join(', ')}`);
-    }
-
-    const brandMap = new Map<string, number>(brands.map(b => [b.name.toLowerCase(), b.id]));
+    if (missingHeaders.length > 0) throw new Error(`CSV is missing required headers for enrichment: ${missingHeaders.join(', ')}`);
 
     return lines.map((line, index) => {
         const values = line.split(separator);
@@ -222,7 +238,11 @@ export const parseEnrichmentCsv = (content: string, brands: Brand[]): Enrichment
         if (!product.name) throw new Error(`Row ${index + 2}: Name is missing.`);
         if (!product.productType || !['watch', 'glasses'].includes(product.productType)) throw new Error(`Row ${index + 2}: Type must be 'watch' or 'glasses'.`);
         if (!product.brandName) throw new Error(`Row ${index + 2}: Brand is missing.`);
-        if (!brandMap.has(product.brandName.toLowerCase())) throw new Error(`Row ${index + 2}: Brand "${product.brandName}" not found in the brand list.`);
+        
+        const bestMatch = findBestBrandMatch(product.brandName, brands);
+        if (!bestMatch) throw new Error(`Row ${index + 2}: Brand "${product.brandName}" not found in the brand list.`);
+        product.brandName = bestMatch.name;
+
         if (!product.imageUrl) throw new Error(`Row ${index + 2}: Image URL is missing.`);
 
         return product as EnrichmentCsvProduct;

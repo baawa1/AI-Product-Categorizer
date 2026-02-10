@@ -2,8 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { CATEGORIES, BRANDS, ATTRIBUTES } from '../constants';
 
+// Initializing the Google GenAI SDK with the API key from environment variables.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-const model = 'gemini-2.5-flash';
+// Using gemini-3-pro-preview for complex reasoning and creative copywriting tasks.
+const model = 'gemini-3-pro-preview';
 
 interface CategorizationResult {
   categoryIds: number[];
@@ -163,6 +165,7 @@ Now, analyze the product and return the complete JSON object.
         requiredFields.push('brandId');
     }
 
+    // Call generateContent with both model name and prompt in a single call.
     const response = await ai.models.generateContent({
       model: model,
       contents: { parts: [imagePart, { text: prompt }] },
@@ -174,11 +177,12 @@ Now, analyze the product and return the complete JSON object.
           required: requiredFields
         },
         temperature: 0.2, 
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 2048 },
+        // Configuring thinkingBudget for Gemini 3 series model.
+        thinkingConfig: { thinkingBudget: 4096 },
       }
     });
     
+    // Use response.text property directly (not a method call).
     const jsonString = response.text.trim();
     const result = JSON.parse(jsonString);
 
@@ -202,10 +206,10 @@ Now, analyze the product and return the complete JSON object.
             console.warn("Gemini response was missing brandId in enrichment mode:", jsonString);
             throw new Error("Model failed to provide a verified brand ID.");
         }
-        // Final check to ensure the returned brand ID is valid
+        // Final check to ensure the returned brand ID is valid.
         finalBrandId = BRANDS.some(b => b.id === result.brandId) ? result.brandId : null;
     } else {
-        // In creation mode, just use the brand ID that was passed in
+        // In creation mode, just use the brand ID that was passed in.
         finalBrandId = brandId;
     }
 
