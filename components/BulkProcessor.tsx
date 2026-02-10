@@ -78,7 +78,9 @@ export const BulkProcessor: React.FC<{
                         <tbody>
                             {processingProducts.map((p, index) => (
                                 <tr key={p.id}>
-                                    <td style={tdStyle}>{(p.source as CsvProduct).sku}</td>
+                                    <td style={{...tdStyle, fontWeight: p.status === 'completed' ? 600 : 400}}>
+                                        {p.result?.sku || (p.source as CsvProduct).sku}
+                                    </td>
                                     <td style={tdStyle}><img src={p.imageFile ? URL.createObjectURL(p.imageFile) : (p.source as CsvProduct).imageUrl} alt={(p.source as CsvProduct).sku} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '0.25rem' }} /></td>
                                     <td style={{...tdStyle, maxWidth: '400px', whiteSpace: 'normal'}}>
                                         {p.status === 'pending' && 'Queued...'}

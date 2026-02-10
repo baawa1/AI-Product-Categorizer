@@ -18,6 +18,7 @@ interface CategorizationResult {
   longDescription: string;
   brandId: number | null;
   primaryCategoryId: number | null;
+  model: string;
 }
 
 const fileToGenerativePart = async (file: File) => {
@@ -105,15 +106,17 @@ Here are additional details provided by the user:
 ${productNameTask}
 ${brandVerificationTask}
 
-${taskNumberingOffset + 2}.  **Generate SEO Title Tag**: Create a concise, keyword-rich title tag (50-60 characters). Start with the primary keyword. The title must be compelling and, if variants exist, mention that options are available.
+${taskNumberingOffset + 2}.  **Identify Model**: Extract or verify the model/style name from the image or text.
 
-${taskNumberingOffset + 3}.  **Generate Meta Description**: Write a compelling meta description (150-160 characters). It must entice clicks and include the phrase "We deliver to all states in Nigeria, including Lagos, PH, Abuja, and Kaduna.".
+${taskNumberingOffset + 3}.  **Generate SEO Title Tag**: Create a concise, keyword-rich title tag (50-60 characters). Start with the primary keyword. The title must be compelling and, if variants exist, mention that options are available.
 
-${taskNumberingOffset + 4}.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string.
+${taskNumberingOffset + 4}.  **Generate Meta Description**: Write a compelling meta description (150-160 characters). It must entice clicks and include the phrase "We deliver to all states in Nigeria, including Lagos, PH, Abuja, and Kaduna.".
 
-${taskNumberingOffset + 5}.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit.
+${taskNumberingOffset + 5}.  **Generate Tags**: Identify distinct features, materials, or styles. List these as a comma-separated string.
 
-${taskNumberingOffset + 6}.  **Generate Long Description (Ogilvy Style for Nigeria)**:
+${taskNumberingOffset + 6}.  **Generate Short Description**: Write a powerful, concise summary (1-2 sentences). Hook the reader with the most compelling benefit.
+
+${taskNumberingOffset + 7}.  **Generate Long Description (Ogilvy Style for Nigeria)**:
     -   Write a detailed, SEO-optimized description that combines the best of SEO (structured headings, keywords) and CRO (addressing customer pain points, building trust, hyper-local relevance).
     -   If variants exist, include a section or sentence about the variety of colors/styles available.
     -   **Structure**:
@@ -124,12 +127,12 @@ ${taskNumberingOffset + 6}.  **Generate Long Description (Ogilvy Style for Niger
         5.  Use an \`<h2>\` heading for trust-building.
     -   **ABSOLUTE CRITICAL FORMATTING RULE**: Generate the HTML with proper indentation and newlines for human readability.
 
-${taskNumberingOffset + 7}.  **Categorize & Attribute**:
+${taskNumberingOffset + 8}.  **Categorize & Attribute**:
     -   Select ALL relevant categories from the list provided. You MUST include the main parent category.
     -   ${locationSelectionInstruction}
     -   Select ALL relevant attributes from the provided list.
     
-${taskNumberingOffset + 8}. **Select Primary Category**: From the "Available Categories" list, select the SINGLE most appropriate and specific, feature-based category for this product URL.
+${taskNumberingOffset + 9}. **Select Primary Category**: From the "Available Categories" list, select the SINGLE most appropriate and specific, feature-based category for this product URL.
 
 **Data Lists for Categorization:**
 Available Categories:
@@ -145,6 +148,7 @@ Now, analyze the product and return the complete JSON object.
 
     const schemaProperties: any = {
         productName: { type: Type.STRING, description: 'A descriptive name for the product.' },
+        model: { type: Type.STRING, description: 'The identified model or style name of the product.' },
         titleTag: { type: Type.STRING, description: 'An SEO-optimized title tag for the product (50-60 characters).' },
         metaDescription: { type: Type.STRING, description: 'An SEO-optimized meta description for the product (150-160 characters), including the delivery information.' },
         suggestedTags: { type: Type.STRING, description: 'A comma-separated list of suggested tags.' },
@@ -155,7 +159,7 @@ Now, analyze the product and return the complete JSON object.
         attributeIds: { type: Type.ARRAY, items: { type: Type.INTEGER, description: 'The ID of a relevant product attribute.' } }
     };
     
-    const requiredFields = ['productName', 'titleTag', 'metaDescription', 'suggestedTags', 'shortDescription', 'longDescription', 'primaryCategoryId', 'categoryIds', 'attributeIds'];
+    const requiredFields = ['productName', 'model', 'titleTag', 'metaDescription', 'suggestedTags', 'shortDescription', 'longDescription', 'primaryCategoryId', 'categoryIds', 'attributeIds'];
 
     if (isEnrichmentMode) {
         schemaProperties.brandId = {
@@ -217,6 +221,7 @@ Now, analyze the product and return the complete JSON object.
         categoryIds: validCategoryIds,
         attributeIds: validAttributeIds,
         productName: result.productName,
+        model: result.model || modelStr || '',
         titleTag: result.titleTag,
         metaDescription: result.metaDescription,
         suggestedTags: result.suggestedTags,

@@ -79,7 +79,9 @@ export const EnrichmentProcessor: React.FC<{
                         <tbody>
                             {processingProducts.map((p, index) => (
                                 <tr key={p.id}>
-                                    <td style={tdStyle}>{(p.source as EnrichmentCsvProduct).sku}</td>
+                                    <td style={{...tdStyle, fontWeight: p.status === 'completed' ? 600 : 400}}>
+                                        {p.result?.sku || (p.source as EnrichmentCsvProduct).sku}
+                                    </td>
                                     <td style={tdStyle}><img src={p.imageFile ? URL.createObjectURL(p.imageFile) : (p.source as EnrichmentCsvProduct).imageUrl} alt={(p.source as EnrichmentCsvProduct).sku} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '0.25rem' }} /></td>
                                     <td style={{...tdStyle, maxWidth: '300px', whiteSpace: 'normal', color: '#9CA3AF'}}>{(p.source as EnrichmentCsvProduct).name}</td>
                                     <td style={{...tdStyle, maxWidth: '300px', whiteSpace: 'normal'}}>

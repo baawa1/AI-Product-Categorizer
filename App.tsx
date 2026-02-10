@@ -100,6 +100,7 @@ const ProductEditor: React.FC<{
             setSelectedCategories(new Set(result.categoryIds));
             setSelectedAttributes(new Set(result.attributeIds));
             setProductName(result.productName);
+            setModel(result.model); // Update model from AI if it found a better one
             setTitleTag(result.titleTag);
             setMetaDescription(result.metaDescription);
             setSuggestedTags(result.suggestedTags);
@@ -109,10 +110,9 @@ const ProductEditor: React.FC<{
             setAnalysisCompleted(true);
             
             // If the SKU was just a placeholder or empty, generate a real one now that we have AI data
-            if (!sku || sku.includes('TEMP')) {
+            if (!sku || sku.includes('TEMP') || sku.toUpperCase() === 'AUTO') {
                 const brandName = BRANDS.find(b => String(b.id) === selectedBrandId)?.name;
-                // Changed to use model name for the third segment
-                setSku(generateSmartSku(selectedProductType, brandName, model));
+                setSku(generateSmartSku(selectedProductType, brandName, result.model));
             }
 
         } catch (e: any) {
@@ -557,10 +557,10 @@ const App = () => {
                          );
 
                          let finalSku = p.sku;
-                         if (!finalSku || finalSku === 'TEMP') {
+                         if (!finalSku || finalSku.toUpperCase() === 'TEMP' || finalSku.toUpperCase() === 'AUTO') {
                              const finalBrandName = BRANDS.find(b => b.id === result.brandId)?.name;
-                             // Changed to use model for segment 3
-                             finalSku = generateSmartSku(p.productType, finalBrandName, p.model);
+                             // Uses result.model in case Gemini found a better name
+                             finalSku = generateSmartSku(p.productType, finalBrandName, result.model);
                          }
                          
                          savedProduct = {
@@ -578,7 +578,7 @@ const App = () => {
                             categoryIds: result.categoryIds,
                             attributeIds: result.attributeIds,
                             brandId: result.brandId,
-                            model: p.model,
+                            model: result.model,
                             isReviewed: false,
                             variants: initialVariants
                          };
@@ -611,7 +611,7 @@ const App = () => {
                             categoryIds: result.categoryIds,
                             attributeIds: result.attributeIds,
                             brandId: result.brandId,
-                            model: '',
+                            model: result.model,
                             isReviewed: false,
                             originalId: p.id,
                             originalName: p.name,
