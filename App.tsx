@@ -9,7 +9,7 @@ import { SearchableSelect } from './components/SearchableSelect';
 import { BulkProcessor } from './components/BulkProcessor';
 import { EnrichmentProcessor } from './components/EnrichmentProcessor';
 import { CATEGORIES, BRANDS, ATTRIBUTES } from './constants';
-import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon, TrashIcon } from './components/icons';
+import { GithubIcon, SaveIcon, CloseIcon, SparklesIcon, FileTextIcon, TrashIcon, ResetIcon } from './components/icons';
 import { buildCategoryTree } from './utils/categoryTree';
 import type { SavedProduct, Variant, BulkProduct, CsvProduct, EnrichmentCsvProduct, CategoryNode, Attribute } from './types';
 import { generateCsvContent, parseCsv, parseEnrichmentCsv } from './utils/csv';
@@ -18,10 +18,11 @@ import { generateSmartSku } from './utils/product-utils';
 const ProductEditor: React.FC<{
     initialData: Partial<SavedProduct & { sku: string; productType: 'watch' | 'glasses'; brandId: number | null, model: string, price: string, userProvidedDetails: string, imageFile: File | null, imageUrl: string | null, imageSource: string | null }>;
     onSave: (product: SavedProduct, variants: Variant[]) => void;
+    onReset?: () => void;
     onCancel?: () => void;
     saveButtonText: string;
     isSaving: boolean;
-}> = ({ initialData, onSave, onCancel, saveButtonText, isSaving }) => {
+}> = ({ initialData, onSave, onReset, onCancel, saveButtonText, isSaving }) => {
     const [sku, setSku] = useState<string>(initialData.sku || '');
     const [selectedProductType, setSelectedProductType] = useState<'watch' | 'glasses' | ''>(initialData.productType || '');
     const [selectedBrandId, setSelectedBrandId] = useState<string>(initialData.brandId ? String(initialData.brandId) : '');
@@ -72,13 +73,15 @@ const ProductEditor: React.FC<{
 
     const handleMagicSku = () => {
         const brandName = BRANDS.find(b => String(b.id) === selectedBrandId)?.name;
-        // Changed to use model name for the third segment
         const newSku = generateSmartSku(selectedProductType, brandName, model);
         setSku(newSku);
     };
 
     const handleStartAnalysis = async () => {
-        if (!imageFile || !selectedProductType || !sku || !selectedBrandId) return;
+        if (!imageFile || !selectedProductType || !sku || !selectedBrandId) {
+            setError("Please fill in SKU, Product Type, Brand, and upload an image before analyzing.");
+            return;
+        }
 
         setIsLoading(true);
         setError(null);
@@ -100,7 +103,7 @@ const ProductEditor: React.FC<{
             setSelectedCategories(new Set(result.categoryIds));
             setSelectedAttributes(new Set(result.attributeIds));
             setProductName(result.productName);
-            setModel(result.model); // Update model from AI if it found a better one
+            setModel(result.model); 
             setTitleTag(result.titleTag);
             setMetaDescription(result.metaDescription);
             setSuggestedTags(result.suggestedTags);
@@ -109,7 +112,6 @@ const ProductEditor: React.FC<{
             setPrimaryCategoryId(result.primaryCategoryId ? String(result.primaryCategoryId) : '');
             setAnalysisCompleted(true);
             
-            // If the SKU was just a placeholder or empty, generate a real one now that we have AI data
             if (!sku || sku.includes('TEMP') || sku.toUpperCase() === 'AUTO') {
                 const brandName = BRANDS.find(b => String(b.id) === selectedBrandId)?.name;
                 setSku(generateSmartSku(selectedProductType, brandName, result.model));
@@ -187,12 +189,6 @@ const ProductEditor: React.FC<{
         }
     };
 
-    const handleResetImage = () => {
-        setImageFile(null);
-        setImageUrl(null);
-        setImageSource(null);
-    };
-
     const handleCategoryToggle = (id: number) => {
         setSelectedCategories(prev => {
             const newSet = new Set(prev);
@@ -259,7 +255,18 @@ const ProductEditor: React.FC<{
         <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2rem', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div style={{ backgroundColor: '#1F2937', padding: '1.5rem', borderRadius: '0.75rem' }}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', marginTop: 0, marginBottom: '1rem' }}>1. Product Details</h2>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF', margin: 0 }}>1. Product Details</h2>
+                        {onReset && (
+                            <button 
+                                onClick={onReset} 
+                                title="Start Over / Clear All"
+                                style={{ backgroundColor: 'transparent', color: '#9CA3AF', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+                            >
+                                <ResetIcon />
+                            </button>
+                        )}
+                    </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ position: 'relative', display: 'flex', gap: '0.5rem' }}>
                             <input 
@@ -289,7 +296,17 @@ const ProductEditor: React.FC<{
                     </div>
                 </div>
 
-                <ImageUploader imageUrl={imageUrl} onImageSelect={handleImageFileSelect} onImageUrlFetch={handleImageUrlFetch} onReset={handleResetImage} isLoading={isLoading} isFetchingImage={isFetchingImage} error={error} hasImage={!!imageUrl} disabled={!isStep1Complete} />
+                <ImageUploader 
+                    imageUrl={imageUrl} 
+                    onImageSelect={handleImageFileSelect} 
+                    onImageUrlFetch={handleImageUrlFetch} 
+                    onReset={onReset || (() => {})} 
+                    isLoading={isLoading} 
+                    isFetchingImage={isFetchingImage} 
+                    error={error} 
+                    hasImage={!!imageUrl} 
+                    disabled={!isStep1Complete} 
+                />
                 <button onClick={handleStartAnalysis} disabled={!isReadyForAnalysis || isLoading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '0.75rem 1rem', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: !isReadyForAnalysis || isLoading ? 'not-allowed' : 'pointer', opacity: !isReadyForAnalysis || isLoading ? 0.6 : 1 }}>
                     <SparklesIcon /> <span style={{ marginLeft: '0.5rem' }}>{isLoading ? 'Analyzing...' : 'Start AI Analysis'}</span>
                 </button>
@@ -384,6 +401,11 @@ const ProductEditor: React.FC<{
                             </div>
                             
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                {onReset && (
+                                    <button onClick={onReset} style={{ display: 'flex', alignItems: 'center', padding: '0.75rem 1.5rem', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer' }}>
+                                        <ResetIcon /> <span style={{ marginLeft: '0.5rem' }}>Start New</span>
+                                    </button>
+                                )}
                                 {onCancel && <button onClick={onCancel} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>}
                                 <button onClick={handleSave} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.75rem 1.5rem', backgroundColor: '#16A34A', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
                                     <SaveIcon /> <span style={{ marginLeft: '0.5rem' }}>{saveButtonText}</span>
@@ -403,6 +425,9 @@ const App = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState<'single' | 'bulk-create' | 'bulk-enrich'>('single');
     
+    // Key-based reset for single product mode
+    const [singleProductKey, setSingleProductKey] = useState(0);
+
     // Bulk Processing State
     const [bulkProducts, setBulkProducts] = useState<BulkProduct[]>([]);
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
@@ -411,6 +436,14 @@ const App = () => {
     const handleSaveProduct = (product: SavedProduct) => {
         setSavedProducts(prev => [...prev, product]);
         alert("Product saved successfully!");
+        // Increment key to reset form for the next product
+        setSingleProductKey(prev => prev + 1);
+    };
+
+    const handleResetSingleForm = () => {
+        if (confirm("Are you sure you want to clear all fields to start a new product? This will not affect your saved items list.")) {
+            setSingleProductKey(prev => prev + 1);
+        }
     };
     
     const handleSaveBulkEditedProduct = (product: SavedProduct) => {
@@ -559,7 +592,6 @@ const App = () => {
                          let finalSku = p.sku;
                          if (!finalSku || finalSku.toUpperCase() === 'TEMP' || finalSku.toUpperCase() === 'AUTO') {
                              const finalBrandName = BRANDS.find(b => b.id === result.brandId)?.name;
-                             // Uses result.model in case Gemini found a better name
                              finalSku = generateSmartSku(p.productType, finalBrandName, result.model);
                          }
                          
@@ -758,7 +790,16 @@ const App = () => {
                         <TabButton current={mode} target="bulk-enrich" onClick={setMode}>Bulk Enrich</TabButton>
                     </div>
 
-                    {mode === 'single' && <ProductEditor initialData={{}} onSave={handleSaveProduct} saveButtonText="Save Product" isSaving={false} />}
+                    {mode === 'single' && (
+                        <ProductEditor 
+                            key={`single-editor-${singleProductKey}`}
+                            initialData={{}} 
+                            onSave={handleSaveProduct} 
+                            onReset={handleResetSingleForm}
+                            saveButtonText="Save Product" 
+                            isSaving={false} 
+                        />
+                    )}
                     
                     {mode === 'bulk-create' && editingBulkIndex === null && (
                         <BulkProcessor 
@@ -778,7 +819,7 @@ const App = () => {
                             processingProducts={bulkProducts} 
                             isProcessing={isBulkProcessing} 
                             onEdit={setEditingBulkIndex} 
-                            onDownload={handleBulkDownload} 
+                            onDownload={handleDownloadCsv} 
                             onReset={handleBulkReset} 
                             onToggleReviewed={handleBulkToggleReviewed}
                         />
